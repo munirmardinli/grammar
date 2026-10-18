@@ -1,0 +1,70 @@
+name: Publish VS Code extension
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: .npm-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile extension
+        run: npm run compile
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      VSCE_PUBLISHER: ${{ vars.VSCE_PUBLISHER }}
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: .npm-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate publishing configuration and version tag
+        run: |
+          if [ -z "$VSCE_PUBLISHER" ]; then
+            echo "::error::Set the VSCE_PUBLISHER repository variable to your Marketplace publisher ID."
+            exit 1
+          fi
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::error::Set the VSCE_PAT repository secret to your Marketplace access token."
+            exit 1
+          fi
+          node -e 'const expected = `v${require("./package.json").version}`; if (process.env.GITHUB_REF_NAME !== expected) { console.error(`Tag ${process.env.GITHUB_REF_NAME} does not match package version ${expected}`); process.exit(1); }'
+          npm pkg set "publisher=$VSCE_PUBLISHER"
+
+      - name: Publish to Visual Studio Marketplace
+        run: npx --yes @vscode/vsce publish --pat "$VSCE_PAT"
