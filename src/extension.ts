@@ -1,18 +1,18 @@
 import * as vscode from 'vscode';
-import { LanguageCheckerService } from './LanguageCheckerService';
+
 import { DiagnosticController } from './DiagnosticController';
+import { LanguageCheckerService } from './LanguageCheckerService';
 import { QuickFixProvider } from './QuickFixProvider';
 
 let diagnosticController: DiagnosticController | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   const languageCheckerService = new LanguageCheckerService('de-DE');
+  diagnosticController = new DiagnosticController(languageCheckerService);
 
-  diagnosticController = new DiagnosticController(languageCheckerService, 500);
-
-  const quickFixProvider = new QuickFixProvider((diagnostic) => {
-    return diagnosticController?.getDiagnosticReplacements(diagnostic) ?? [];
-  });
+  const quickFixProvider = new QuickFixProvider((diagnostic) =>
+    diagnosticController?.getDiagnosticReplacements(diagnostic) ?? []
+  );
 
   diagnosticController.registerEvents(context);
 
@@ -28,12 +28,12 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push({
     dispose: () => {
       diagnosticController?.dispose();
+      diagnosticController = undefined;
     }
   });
 }
 
 export function deactivate(): void {
-  if (diagnosticController) {
-    diagnosticController.dispose();
-  }
+  diagnosticController?.dispose();
+  diagnosticController = undefined;
 }

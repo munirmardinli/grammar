@@ -1,20 +1,19 @@
 import * as vscode from 'vscode';
-import { IGrammarCheck } from './type';
 
-type LanguageToolReplacement = IGrammarCheck.Replacement;
+import type { Replacement } from './type';
 
-export class QuickFixProvider implements vscode.CodeActionProvider {
+class QuickFixProvider implements vscode.CodeActionProvider {
   public static readonly providedCodeActionKinds = [vscode.CodeActionKind.QuickFix];
 
   constructor(
-    private readonly getReplacements: (diagnostic: vscode.Diagnostic) => LanguageToolReplacement[]
+    private readonly getReplacements: (diagnostic: vscode.Diagnostic) => Replacement[]
   ) {}
 
   public provideCodeActions(
     document: vscode.TextDocument,
-    range: vscode.Range | vscode.Selection,
+    _range: vscode.Range | vscode.Selection,
     context: vscode.CodeActionContext,
-    token: vscode.CancellationToken
+    _token: vscode.CancellationToken
   ): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
 
@@ -24,10 +23,6 @@ export class QuickFixProvider implements vscode.CodeActionProvider {
       }
 
       const replacements = this.getReplacements(diagnostic);
-      if (replacements.length === 0) {
-        continue;
-      }
-
       for (const replacement of replacements) {
         const action = new vscode.CodeAction(
           `Ändern zu "${replacement.value}"`,
@@ -37,7 +32,6 @@ export class QuickFixProvider implements vscode.CodeActionProvider {
         action.edit.replace(document.uri, diagnostic.range, replacement.value);
         action.diagnostics = [diagnostic];
         action.isPreferred = true;
-
         actions.push(action);
       }
     }
@@ -45,3 +39,5 @@ export class QuickFixProvider implements vscode.CodeActionProvider {
     return actions;
   }
 }
+
+export { QuickFixProvider };

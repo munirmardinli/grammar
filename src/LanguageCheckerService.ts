@@ -1,11 +1,8 @@
 import axios from 'axios';
-import { IGrammarCheck } from './type';
 
-export type LanguageToolReplacement = IGrammarCheck.Replacement;
-export type LanguageToolMatch = IGrammarCheck.Match;
-export type LanguageToolResponse = IGrammarCheck.Response;
+import type { Match, Response } from './type';
 
-export class LanguageCheckerService {
+class LanguageCheckerService {
   private readonly apiUrl: string;
   private readonly language: string;
 
@@ -14,7 +11,7 @@ export class LanguageCheckerService {
     this.apiUrl = apiUrl;
   }
 
-  public async checkText(text: string): Promise<LanguageToolMatch[]> {
+  public async checkText(text: string): Promise<Match[]> {
     if (!text || text.trim().length === 0) {
       return [];
     }
@@ -24,7 +21,7 @@ export class LanguageCheckerService {
       params.append('text', text);
       params.append('language', this.language);
 
-      const response = await axios.post<LanguageToolResponse>(this.apiUrl, params, {
+      const response = await axios.post<Response>(this.apiUrl, params, {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
         },
@@ -38,3 +35,5 @@ export class LanguageCheckerService {
     }
   }
 }
+
+export { LanguageCheckerService };

@@ -1,20 +1,21 @@
 import * as vscode from 'vscode';
-import { LanguageCheckerService, LanguageToolReplacement } from './LanguageCheckerService';
-import { IGrammarCheck } from './type';
 
-export class DiagnosticController {
+import { LanguageCheckerService } from './LanguageCheckerService';
+import type { DebounceTimer, Replacement } from './type';
+
+class DiagnosticController {
   private readonly checkerService: LanguageCheckerService;
   private readonly diagnosticCollection: vscode.DiagnosticCollection;
-  private readonly debounceTimers: Map<string, IGrammarCheck.DebounceTimer>;
+  private readonly debounceTimers: Map<string, DebounceTimer>;
   private readonly debounceDelay: number;
-  private readonly replacementsByDiagnostic: WeakMap<vscode.Diagnostic, LanguageToolReplacement[]>;
+  private readonly replacementsByDiagnostic: WeakMap<vscode.Diagnostic, Replacement[]>;
 
   constructor(checkerService: LanguageCheckerService, debounceDelay: number = 500) {
     this.checkerService = checkerService;
     this.diagnosticCollection = vscode.languages.createDiagnosticCollection('languageTool');
-    this.debounceTimers = new Map<string, IGrammarCheck.DebounceTimer>();
+    this.debounceTimers = new Map<string, DebounceTimer>();
     this.debounceDelay = debounceDelay;
-    this.replacementsByDiagnostic = new WeakMap<vscode.Diagnostic, LanguageToolReplacement[]>();
+    this.replacementsByDiagnostic = new WeakMap<vscode.Diagnostic, Replacement[]>();
   }
 
   public registerEvents(context: vscode.ExtensionContext): void {
@@ -56,7 +57,11 @@ export class DiagnosticController {
   }
 
   public async validateDocument(document: vscode.TextDocument): Promise<void> {
-    if (document.languageId !== 'plaintext' && document.languageId !== 'markdown' && document.languageId !== 'git-commit') {
+    if (
+      document.languageId !== 'plaintext' &&
+      document.languageId !== 'markdown' &&
+      document.languageId !== 'git-commit'
+    ) {
       return;
     }
 
@@ -68,7 +73,6 @@ export class DiagnosticController {
       const startPos = document.positionAt(match.offset);
       const endPos = document.positionAt(match.offset + match.length);
       const range = new vscode.Range(startPos, endPos);
-
       const diagnostic = new vscode.Diagnostic(
         range,
         match.message,
@@ -84,7 +88,7 @@ export class DiagnosticController {
     this.diagnosticCollection.set(document.uri, diagnostics);
   }
 
-  public getDiagnosticReplacements(diagnostic: vscode.Diagnostic): LanguageToolReplacement[] {
+  public getDiagnosticReplacements(diagnostic: vscode.Diagnostic): Replacement[] {
     return this.replacementsByDiagnostic.get(diagnostic) ?? [];
   }
 
@@ -106,3 +110,5 @@ export class DiagnosticController {
     this.debounceTimers.clear();
   }
 }
+
+export { DiagnosticController };
