@@ -4,7 +4,7 @@
   "displayName": "Spell & Grammar Checker",
   "description": "VS Code extension for spelling and grammar checking powered by LanguageTool",
   "icon": "images/icon.png",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "license": "MIT",
   "author": {
     "name": "Munir Mardinli",
@@ -38,18 +38,25 @@
     "vsix": "npx --yes @vscode/vsce package --no-dependencies --out ./vscode-spell-grammar-checker.vsix",
     "install:vsix": "npm run vsix && code --install-extension ./vscode-spell-grammar-checker.vsix",
     "watch-tests": "tsc -p . -w --outDir out",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test": "npm run check-types && tsc --project tsconfig.test.json && node --test out/test/GrammarConfig.test.js && npm run test:extension",
+    "test:extension": "npm run compile:extension && node out/test/runTest.js"
   },
   "devDependencies": {
-  "@types/vscode": "^1.80.0",
-  "@types/mocha": "^10.0.10",
-  "@types/node": "24.x",
-  "esbuild": "^0.28.1",
-  "npm-run-all": "^4.1.5",
-  "typescript": "^6.0.3"
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "@types/vscode": "^1.80.0",
+    "@vscode/test-electron": "^3.1.0",
+    "esbuild": "^0.28.1",
+    "mocha": "^12.0.3",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^6.0.3"
   },
   "dependencies": {
-    "axios": "^1.13.2"
+    "axios": "^1.13.2",
+    "ignore": "^7.0.12",
+    "minimatch": "^10.2.6",
+    "yaml": "^2.9.1"
   },
   "overrides": {
     "diff": "^8.0.4",

@@ -9,13 +9,19 @@ class DiagnosticController {
   private readonly debounceTimers: Map<string, DebounceTimer>;
   private readonly debounceDelay: number;
   private readonly replacementsByDiagnostic: WeakMap<vscode.Diagnostic, Replacement[]>;
+  private readonly isIgnoredDocument: (document: vscode.TextDocument) => boolean;
 
-  constructor(checkerService: LanguageCheckerService, debounceDelay: number = 500) {
+  constructor(
+    checkerService: LanguageCheckerService,
+    debounceDelay: number = 500,
+    isIgnoredDocument: (document: vscode.TextDocument) => boolean = () => false
+  ) {
     this.checkerService = checkerService;
     this.diagnosticCollection = vscode.languages.createDiagnosticCollection('languageTool');
     this.debounceTimers = new Map<string, DebounceTimer>();
     this.debounceDelay = debounceDelay;
     this.replacementsByDiagnostic = new WeakMap<vscode.Diagnostic, Replacement[]>();
+    this.isIgnoredDocument = isIgnoredDocument;
   }
 
   public registerEvents(context: vscode.ExtensionContext): void {
@@ -57,6 +63,11 @@ class DiagnosticController {
   }
 
   public async validateDocument(document: vscode.TextDocument): Promise<void> {
+    if (this.isIgnoredDocument(document)) {
+      this.diagnosticCollection.delete(document.uri);
+      return;
+    }
+
     if (
       document.languageId !== 'plaintext' &&
       document.languageId !== 'markdown' &&

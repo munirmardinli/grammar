@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      test:
+        patterns:
+          - "@types/mocha"
+          - mocha
+      typescript:
+        patterns:
+          - typescript
+          - "@types/node"
+      vscode-packages:
+        patterns:
+          - "@types/vscode"
+          - "@vscode/*"
+      build-tools:
+        patterns:
+          - esbuild
+          - npm-run-all
+      runtime:
+        patterns:
+          - axios
+          - ignore
+          - minimatch
+          - yaml
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
