@@ -43,11 +43,12 @@ class LanguageCheckerService {
       return [];
     }
 
-    const checkedText = LanguageCheckerService.maskIgnoredContent(
-      text,
-      isMarkdown,
-      this.ignoreOptions,
-    );
+    const { text: checkedText, maskedRanges } =
+      LanguageCheckerService.maskIgnoredContent(
+        text,
+        isMarkdown,
+        this.ignoreOptions,
+      );
 
     try {
       const params = new URLSearchParams();
@@ -69,6 +70,15 @@ class LanguageCheckerService {
       );
 
       return (response.data.matches ?? []).filter((match) => {
+        if (
+          maskedRanges.some(
+            ({ start, end }) =>
+              match.offset < end && match.offset + match.length > start,
+          )
+        ) {
+          return false;
+        }
+
         const matchedText = checkedText
           .slice(match.offset, match.offset + match.length)
           .trim()
@@ -95,14 +105,16 @@ class LanguageCheckerService {
     text: string,
     isMarkdown: boolean,
     options: GrammarIgnoreOptions,
-  ): string {
+  ): { text: string; maskedRanges: Array<{ start: number; end: number }> } {
     const characters = text.split("");
+    const maskedRanges: Array<{ start: number; end: number }> = [];
     const maskRange = (start: number, end: number): void => {
       for (let index = start; index < end; index += 1) {
         if (characters[index] !== "\n" && characters[index] !== "\r") {
-          characters[index] = " ";
+          characters[index] = "-";
         }
       }
+      maskedRanges.push({ start, end });
     };
 
     if (options.frontmatter && isMarkdown) {
@@ -140,7 +152,7 @@ class LanguageCheckerService {
       LanguageCheckerService.maskMarkdownLinkTargets(text, maskRange);
     }
 
-    return characters.join("");
+    return { text: characters.join(""), maskedRanges };
   }
 
   private static maskMarkdownLinkTargets(

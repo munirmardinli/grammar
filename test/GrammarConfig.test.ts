@@ -315,6 +315,62 @@ test('masks HTML, style blocks, frontmatter, and Markdown link targets before ch
   }
 });
 
+test('does not turn masked Markdown content into repeated-space diagnostics', async () => {
+  const markdown = '---\ntitle:  Intro\n---\nvisible  spacing\n';
+  const frontmatterWhitespaceOffset = markdown.indexOf('  ');
+  const visibleWhitespaceOffset = markdown.lastIndexOf('  ');
+  let submittedText = '';
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) {
+      body += chunk.toString();
+    }
+    submittedText = new URLSearchParams(body).get('text') ?? '';
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        matches: [frontmatterWhitespaceOffset, visibleWhitespaceOffset].map(
+          (offset) => ({
+            message: 'Repeated spaces',
+            offset,
+            length: 2,
+            replacements: [],
+            rule: { id: 'WHITESPACE_RULE', description: 'Repeated whitespace' }
+          })
+        )
+      })
+    );
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const service = new LanguageCheckerService(
+      'de-DE',
+      `http://127.0.0.1:${address.port}/check`
+    );
+
+    const matches = await service.checkText(markdown, true);
+
+    assert.equal(submittedText.length, markdown.length);
+    assert.notEqual(
+      submittedText.slice(
+        frontmatterWhitespaceOffset,
+        frontmatterWhitespaceOffset + 2
+      ),
+      '  '
+    );
+    assert.deepEqual(matches.map((match) => match.offset), [visibleWhitespaceOffset]);
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
 test('matches configured paths and enabled gitignore patterns', async () => {
   const workspacePath = await mkdtemp(join(tmpdir(), 'grammar-test-'));
 
