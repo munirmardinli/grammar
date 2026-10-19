@@ -1,0 +1,175 @@
+name: Merge approved pull requests
+
+on:
+  pull_request_review:
+    types: [submitted]
+  check_run:
+    types: [completed]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  checks: read
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    if: >-
+      github.event_name == 'pull_request_review' ||
+      (github.event_name == 'check_run' && github.event.check_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge when CI, CodeQL, and Copilot approval pass
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const copilotReviewer = "copilot-pull-request-reviewer[bot]";
+            let pullRequests = [];
+
+            if (context.eventName === "pull_request_review") {
+              pullRequests = [context.payload.pull_request];
+            } else if (context.eventName === "check_run") {
+              const checkRun = context.payload.check_run;
+              pullRequests = checkRun.pull_requests ?? [];
+
+              if (pullRequests.length === 0) {
+                pullRequests = await github.paginate(
+                  github.rest.pulls.list,
+                  { owner, repo, state: "open", base: "main", per_page: 100 }
+                );
+                pullRequests = pullRequests.filter(
+                  (pullRequest) => pullRequest.head.sha === checkRun.head_sha
+                );
+              }
+            } else {
+              const workflowRun = context.payload.workflow_run;
+              pullRequests = workflowRun.pull_requests ?? [];
+
+              if (pullRequests.length === 0) {
+                pullRequests = await github.paginate(
+                  github.rest.pulls.list,
+                  { owner, repo, state: "open", base: "main", per_page: 100 }
+                );
+                pullRequests = pullRequests.filter(
+                  (pullRequest) => pullRequest.head.sha === workflowRun.head_sha
+                );
+              }
+            }
+
+            for (const candidate of pullRequests) {
+              const { data: pullRequest } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: candidate.number
+              });
+
+              if (
+                pullRequest.state !== "open" ||
+                pullRequest.draft ||
+                pullRequest.base.ref !== "main"
+              ) {
+                continue;
+              }
+
+              const reviews = await github.paginate(
+                github.rest.pulls.listReviews,
+                { owner, repo, pull_number: pullRequest.number, per_page: 100 }
+              );
+              const copilotReviews = reviews
+                .filter(
+                  (review) =>
+                    review.user?.login === copilotReviewer &&
+                    review.commit_id === pullRequest.head.sha &&
+                    review.state !== "PENDING"
+                )
+                .sort(
+                  (left, right) =>
+                    new Date(right.submitted_at ?? 0).getTime() -
+                    new Date(left.submitted_at ?? 0).getTime()
+                );
+
+              if (copilotReviews[0]?.state !== "APPROVED") {
+                core.info(
+                  `Skipping #${pullRequest.number}: no Copilot approval for the current commit.`
+                );
+                continue;
+              }
+
+              const latestReviewsByUser = new Map();
+              for (const review of reviews) {
+                if (
+                  !review.user?.login ||
+                  review.commit_id !== pullRequest.head.sha ||
+                  !review.submitted_at
+                ) {
+                  continue;
+                }
+                const latestReview = latestReviewsByUser.get(review.user.login);
+                if (
+                  !latestReview ||
+                  new Date(review.submitted_at).getTime() >
+                    new Date(latestReview.submitted_at).getTime()
+                ) {
+                  latestReviewsByUser.set(review.user.login, review);
+                }
+              }
+
+              if (
+                [...latestReviewsByUser.values()].some(
+                  (review) =>
+                    review.user.login !== copilotReviewer &&
+                    review.state === "CHANGES_REQUESTED"
+                )
+              ) {
+                core.info(
+                  `Skipping #${pullRequest.number}: a reviewer requested changes on the current commit.`
+                );
+                continue;
+              }
+
+              const checkRuns = await github.paginate(
+                github.rest.checks.listForRef,
+                { owner, repo, ref: pullRequest.head.sha, per_page: 100 },
+                (response) => response.data.check_runs
+              );
+              const requiredChecks = [
+                ["CI / test", "test"],
+                ["CodeQL"]
+              ];
+              const checksPassed = requiredChecks.every((names) => {
+                const latestRun = checkRuns
+                  .filter((checkRun) =>
+                    names.some((name) =>
+                      name === "CodeQL"
+                        ? /^CodeQL(?:$|[ /(:-])/i.test(checkRun.name)
+                        : checkRun.name === name
+                    )
+                  )
+                  .sort(
+                    (left, right) =>
+                      new Date(right.started_at ?? right.created_at).getTime() -
+                      new Date(left.started_at ?? left.created_at).getTime()
+                  )[0];
+                return latestRun?.status === "completed" && latestRun.conclusion === "success";
+              });
+
+              if (!checksPassed) {
+                core.info(
+                  `Skipping #${pullRequest.number}: CI and CodeQL have not both passed.`
+                );
+                continue;
+              }
+
+              await github.rest.pulls.merge({
+                owner,
+                repo,
+                pull_number: pullRequest.number,
+                sha: pullRequest.head.sha,
+                merge_method: "squash"
+              });
+              core.info(`Merged #${pullRequest.number} after Copilot approval and passing checks.`);
+            }

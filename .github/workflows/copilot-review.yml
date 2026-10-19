@@ -1,0 +1,70 @@
+name: Request Copilot review
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  request-review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request a Copilot code review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pullNumber = context.payload.pull_request.number;
+            const { data: requestedReviewers } = await github.rest.pulls.listRequestedReviewers({
+              owner,
+              repo,
+              pull_number: pullNumber
+            });
+
+            if (
+              requestedReviewers.users.some(
+                (reviewer) => reviewer.login === "copilot-pull-request-reviewer[bot]"
+              )
+            ) {
+              core.info(`Copilot is already requested for #${pullNumber}.`);
+              return;
+            }
+
+            await github.rest.pulls.requestReviewers({
+              owner,
+              repo,
+              pull_number: pullNumber,
+              reviewers: ["copilot-pull-request-reviewer[bot]"]
+            });
+
+  assign-coding-agent:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign Copilot coding agent
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pullRequest = context.payload.pull_request;
+            const copilotAssignee = "Copilot";
+
+            if (
+              pullRequest.assignees.some(
+                (assignee) => assignee.login.toLowerCase() === copilotAssignee.toLowerCase()
+              )
+            ) {
+              core.info(`Copilot coding agent is already assigned to #${pullRequest.number}.`);
+              return;
+            }
+
+            await github.rest.issues.addAssignees({
+              owner,
+              repo,
+              issue_number: pullRequest.number,
+              assignees: [copilotAssignee]
+            });

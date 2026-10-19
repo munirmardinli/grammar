@@ -36,6 +36,22 @@ optional; defaults are `de-DE`, `false`, and empty lists.
 Changes to `.grammar.yaml` and `.gitignore` are watched and applied to open
 documents without reloading VS Code.
 
+## Pull request automation
+
+Pull requests targeting `main`, including Dependabot pull requests, run the CI
+tests and GitHub's CodeQL default setup. The repository requests a Copilot code review and
+merges a pull request only after both checks pass and Copilot approves the
+current commit. A reviewer requesting changes on the current commit blocks the
+merge.
+
+Copilot code review and the Copilot coding agent must be available to the
+repository. The coding agent is automatically assigned to every non-draft pull
+request, including external and Dependabot pull requests, and may push changes
+to them. By default, Copilot leaves comments rather than an approving review,
+so automatic merging will remain blocked until Copilot approval reviews are
+enabled. A new commit requires a fresh Copilot approval and successful checks
+before it can be merged.
+
 ## Development
 
 Run `npm install`, then `npm run compile` to type-check and build the extension.
