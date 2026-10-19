@@ -27,6 +27,14 @@ ignorePaths:
 words:
   - ProductName
   - custom term
+english:
+  - workflow
+technicalTerms:
+  - biopsychosoziales Modell
+names:
+  - Munir Mardinli
+abbreviations:
+  - DSGVO
 ignore:
   html: true
   style: true
@@ -36,12 +44,21 @@ ignore:
 
 `language` selects the LanguageTool language, `useGitignore` enables rules from
 the workspace-root `.gitignore`, `ignorePaths` skips matching workspace files,
-and `words` are sent to LanguageTool as words to ignore. The `ignore` flags
-control whether HTML tags and attributes, CSS `<style>` blocks, Markdown
-frontmatter, and Markdown link destinations are excluded from checking. The
-visible text inside HTML elements and Markdown link labels remains checked.
-All fields are optional; defaults are `de-DE`, `false`, and empty lists. All
-four `ignore` flags default to `true`.
+and `words`, `english`, `technicalTerms`, `names`, and `abbreviations` are sent
+to LanguageTool as terms to ignore. Use `english` for English words in German
+text, `technicalTerms` for domain-specific vocabulary, `names` for people or
+other proper names, and `abbreviations` for abbreviations. Gender-inclusive
+forms such as `Klient:innen` are accepted by
+the local capitalization check. The `ignore` flags control whether HTML tags
+and attributes, CSS `<style>` blocks, Markdown frontmatter, and Markdown link
+targets are excluded from checking. This includes standard Markdown links
+(`[label](target)`) and Obsidian wiki links (`[[target]]` or
+`[[target|label]]`); link labels remain checked. The first word after a colon is
+also expected to start with a capital letter, but gender markers such as the
+colon in `Klient:innen` are not treated as sentence punctuation. Capitalized
+sentence starts in Markdown list items are accepted. All fields are optional;
+defaults are `de-DE`, `false`, and empty lists. All four `ignore` flags default
+to `true`.
 Changes to `.grammar.yaml` and `.gitignore` are watched and applied to open
 documents without reloading VS Code.
 

@@ -4,6 +4,12 @@ ignorePaths:
   - "src/**/*.sh"
 words:
   - VSCode
+english: []
+technicalTerms: []
+names:
+  - Hammurapi
+abbreviations:
+  - PDF
 ignore:
   html: true
   style: true

@@ -21,13 +21,31 @@ class GrammarConfig {
     public readonly useGitignore: boolean,
     public readonly ignorePaths: string[],
     public readonly words: string[],
+    public readonly english: string[],
+    public readonly technicalTerms: string[],
+    public readonly names: string[],
+    public readonly abbreviations: string[],
     public readonly ignoreOptions: GrammarIgnoreOptions,
   ) {}
+
+  public get ignoredWords(): string[] {
+    return [
+      ...this.words,
+      ...this.english,
+      ...this.technicalTerms,
+      ...this.names,
+      ...this.abbreviations,
+    ];
+  }
 
   public static defaults(): GrammarConfig {
     return new GrammarConfig(
       GrammarConfig.defaultLanguage,
       false,
+      [],
+      [],
+      [],
+      [],
       [],
       [],
       { ...GrammarConfig.defaultIgnoreOptions },
@@ -77,6 +95,38 @@ class GrammarConfig {
       );
     }
     if (
+      config.english !== undefined &&
+      !GrammarConfig.isStringArray(config.english)
+    ) {
+      throw new TypeError(
+        'The "english" value in .grammar.yaml must be an array of strings.',
+      );
+    }
+    if (
+      config.technicalTerms !== undefined &&
+      !GrammarConfig.isStringArray(config.technicalTerms)
+    ) {
+      throw new TypeError(
+        'The "technicalTerms" value in .grammar.yaml must be an array of strings.',
+      );
+    }
+    if (
+      config.names !== undefined &&
+      !GrammarConfig.isStringArray(config.names)
+    ) {
+      throw new TypeError(
+        'The "names" value in .grammar.yaml must be an array of strings.',
+      );
+    }
+    if (
+      config.abbreviations !== undefined &&
+      !GrammarConfig.isStringArray(config.abbreviations)
+    ) {
+      throw new TypeError(
+        'The "abbreviations" value in .grammar.yaml must be an array of strings.',
+      );
+    }
+    if (
       config.ignore !== undefined &&
       (typeof config.ignore !== "object" ||
         config.ignore === null ||
@@ -114,6 +164,14 @@ class GrammarConfig {
       typeof config.useGitignore === "boolean" ? config.useGitignore : false,
       GrammarConfig.isStringArray(config.ignorePaths) ? config.ignorePaths : [],
       GrammarConfig.isStringArray(config.words) ? config.words : [],
+      GrammarConfig.isStringArray(config.english) ? config.english : [],
+      GrammarConfig.isStringArray(config.technicalTerms)
+        ? config.technicalTerms
+        : [],
+      GrammarConfig.isStringArray(config.names) ? config.names : [],
+      GrammarConfig.isStringArray(config.abbreviations)
+        ? config.abbreviations
+        : [],
       ignoreOptions,
     );
   }

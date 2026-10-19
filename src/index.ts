@@ -31,7 +31,7 @@ class Extension {
     this.languageCheckerService = new LanguageCheckerService(
       this.config.language,
       undefined,
-      this.config.words,
+      this.config.ignoredWords,
       this.config.ignoreOptions,
     );
     this.diagnosticController = new DiagnosticController(
@@ -121,7 +121,7 @@ class Extension {
       await this.loadConfiguration();
       this.languageCheckerService?.updateConfiguration(
         this.config.language,
-        this.config.words,
+        this.config.ignoredWords,
         this.config.ignoreOptions,
       );
       await this.diagnosticController?.revalidateOpenDocuments();

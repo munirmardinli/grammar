@@ -43,7 +43,7 @@ class LanguageCheckerService {
       return [];
     }
 
-    const { text: checkedText, maskedRanges } =
+    const { text: checkedText, maskedRanges, markdownLinkEnds } =
       LanguageCheckerService.maskIgnoredContent(
         text,
         isMarkdown,
@@ -68,13 +68,100 @@ class LanguageCheckerService {
       const ignoredWords = new Set(
         this.ignoredWords.map((word) => word.trim().toLowerCase()),
       );
+      const colonStarts = LanguageCheckerService.getColonStarts(checkedText);
+      const markdownListItemStarts = isMarkdown
+        ? LanguageCheckerService.getMarkdownListItemStarts(text)
+        : [];
+      const localMatches = colonStarts
+        .filter(
+          ({ offset, character }) =>
+            character === character.toLowerCase() &&
+            !LanguageCheckerService.isGenderColonForm(checkedText, offset),
+        )
+        .map(({ offset, character }): Match => ({
+          message: "Nach einem Doppelpunkt wird der nächste Wortanfang großgeschrieben.",
+          offset,
+          length: 1,
+          replacements: [{ value: character.toUpperCase() }],
+          rule: {
+            id: "COLON_CAPITALIZATION",
+            description: "Großschreibung nach Doppelpunkt",
+          },
+        }));
+      const linkWhitespaceMatches = markdownLinkEnds.flatMap(
+        (end): Match[] => {
+          const whitespace = /^ {2,}(?=\S)/.exec(text.slice(end));
+          if (!whitespace) {
+            return [];
+          }
 
-      return (response.data.matches ?? []).filter((match) => {
+          const offset = end;
+          const length = whitespace[0].length;
+          if (
+            maskedRanges.some(
+              (range) => offset < range.end && offset + length > range.start,
+            )
+          ) {
+            return [];
+          }
+
+          return [
+            {
+              message: "Mehrere Leerzeichen nach einem Markdown-Link.",
+              offset,
+              length,
+              replacements: [{ value: " " }],
+              rule: {
+                id: "WHITESPACE_RULE",
+                description: "Mehrere Leerzeichen",
+              },
+            },
+          ];
+        },
+      );
+
+      const remoteMatches = (response.data.matches ?? []).filter((match) => {
         if (
           maskedRanges.some(
             ({ start, end }) =>
               match.offset < end && match.offset + match.length > start,
           )
+        ) {
+          return false;
+        }
+
+        if (
+          linkWhitespaceMatches.some(
+            ({ offset, length }) =>
+              match.offset < offset + length &&
+              match.offset + match.length > offset &&
+              /^\s+$/.test(
+                checkedText.slice(match.offset, match.offset + match.length),
+              ),
+          )
+        ) {
+          return false;
+        }
+
+        if (
+          markdownListItemStarts.some(
+            (offset) =>
+              match.offset <= offset &&
+              match.offset + match.length > offset &&
+              checkedText[offset] === checkedText[offset].toUpperCase(),
+          ) &&
+          LanguageCheckerService.isCapitalizationMatch(match)
+        ) {
+          return false;
+        }
+
+        if (
+          colonStarts.some(
+            ({ offset, length }) =>
+              match.offset < offset + length &&
+              match.offset + match.length > offset,
+          ) &&
+          LanguageCheckerService.isCapitalizationMatch(match)
         ) {
           return false;
         }
@@ -95,6 +182,10 @@ class LanguageCheckerService {
           LanguageCheckerService.isMarkdownTableLayout(text, match.offset)
         );
       });
+
+      return [...remoteMatches, ...localMatches, ...linkWhitespaceMatches].sort(
+        (left, right) => left.offset - right.offset,
+      );
     } catch (error) {
       console.error("LanguageCheckerService Error:", error);
       return [];
@@ -105,9 +196,14 @@ class LanguageCheckerService {
     text: string,
     isMarkdown: boolean,
     options: GrammarIgnoreOptions,
-  ): { text: string; maskedRanges: Array<{ start: number; end: number }> } {
+  ): {
+    text: string;
+    maskedRanges: Array<{ start: number; end: number }>;
+    markdownLinkEnds: number[];
+  } {
     const characters = text.split("");
     const maskedRanges: Array<{ start: number; end: number }> = [];
+    let markdownLinkEnds: number[] = [];
     const maskRange = (start: number, end: number): void => {
       for (let index = start; index < end; index += 1) {
         if (characters[index] !== "\n" && characters[index] !== "\r") {
@@ -149,17 +245,22 @@ class LanguageCheckerService {
     }
 
     if (options.markdownLinks && isMarkdown) {
-      LanguageCheckerService.maskMarkdownLinkTargets(text, maskRange);
+      markdownLinkEnds = LanguageCheckerService.maskMarkdownLinkTargets(
+        text,
+        maskRange,
+      );
+      LanguageCheckerService.maskObsidianLinkTargets(text, maskRange);
     }
 
-    return { text: characters.join(""), maskedRanges };
+    return { text: characters.join(""), maskedRanges, markdownLinkEnds };
   }
 
   private static maskMarkdownLinkTargets(
     text: string,
     maskRange: (start: number, end: number) => void,
-  ): void {
+  ): number[] {
     const linkStartPattern = /!?\[([^\]\n]*)\]\(/g;
+    const linkEnds: number[] = [];
     for (const match of text.matchAll(linkStartPattern)) {
       const start = match.index;
       if (start === undefined) {
@@ -194,6 +295,33 @@ class LanguageCheckerService {
       if (depth === 0) {
         maskRange(start, labelStart);
         maskRange(labelEnd, end);
+        linkEnds.push(end);
+      }
+    }
+    return linkEnds;
+  }
+
+  private static maskObsidianLinkTargets(
+    text: string,
+    maskRange: (start: number, end: number) => void,
+  ): void {
+    const linkPattern = /\[\[([^\]\n]+)\]\]/g;
+    for (const match of text.matchAll(linkPattern)) {
+      const start = match.index;
+      if (start === undefined) {
+        continue;
+      }
+
+      const linkContent = match[1];
+      const targetEnd = linkContent.indexOf("|");
+      const targetStart = start + 2;
+      const targetLength = targetEnd === -1 ? linkContent.length : targetEnd;
+      if (targetEnd === -1) {
+        maskRange(start, start + match[0].length);
+      } else {
+        maskRange(start, targetStart);
+        maskRange(targetStart, targetStart + targetLength + 1);
+        maskRange(start + match[0].length - 2, start + match[0].length);
       }
     }
   }
@@ -222,6 +350,52 @@ class LanguageCheckerService {
           }
           return targetLine <= tableEnd;
         })()
+    );
+  }
+
+  private static getColonStarts(
+    text: string,
+  ): Array<{ offset: number; length: number; character: string }> {
+    const starts: Array<{ offset: number; length: number; character: string }> =
+      [];
+    const pattern = /:\s*(?:[*_~`]*\s*)([A-Za-zÄÖÜäöüß])/g;
+    for (const match of text.matchAll(pattern)) {
+      const character = match[1];
+      const offset = match.index + match[0].lastIndexOf(character);
+      starts.push({ offset, length: 1, character });
+    }
+    return starts;
+  }
+
+  private static isGenderColonForm(text: string, followingOffset: number): boolean {
+    const colonOffset = text.lastIndexOf(":", followingOffset);
+    const precedingCharacter = text.slice(colonOffset - 1, colonOffset);
+    const between = text.slice(colonOffset + 1, followingOffset);
+
+    return (
+      colonOffset >= 1 &&
+      /\p{L}/u.test(precedingCharacter) &&
+      /^[*_~`]*$/.test(between)
+    );
+  }
+
+  private static getMarkdownListItemStarts(text: string): number[] {
+    const starts: number[] = [];
+    const listItem = /^[ \t]{0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+[*_~`]*/gmu;
+
+    for (const match of text.matchAll(listItem)) {
+      const offset = match.index + match[0].length;
+      if (/\p{L}/u.test(text[offset] ?? "")) {
+        starts.push(offset);
+      }
+    }
+
+    return starts;
+  }
+
+  private static isCapitalizationMatch(match: Match): boolean {
+    return /case|capital|uppercase|sentence.?start|groß|gross/i.test(
+      `${match.rule.id} ${match.rule.description} ${match.message}`,
     );
   }
 }

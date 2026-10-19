@@ -10,8 +10,22 @@ import { GrammarConfig } from '../src/GrammarConfig';
 import { LanguageCheckerService } from '../src/LanguageCheckerService';
 
 test('parses the grammar YAML configuration and supplies defaults', () => {
-  const config = GrammarConfig.parse('words: [LanguageTool, VSCode]');
+  const config = GrammarConfig.parse(
+    'words: [LanguageTool, VSCode]\nenglish: [workflow]\ntechnicalTerms: [Fachbegriff]\nnames: [Munir]\nabbreviations: [DSGVO]'
+  );
   assert.deepEqual(config.words, ['LanguageTool', 'VSCode']);
+  assert.deepEqual(config.english, ['workflow']);
+  assert.deepEqual(config.technicalTerms, ['Fachbegriff']);
+  assert.deepEqual(config.names, ['Munir']);
+  assert.deepEqual(config.abbreviations, ['DSGVO']);
+  assert.deepEqual(config.ignoredWords, [
+    'LanguageTool',
+    'VSCode',
+    'workflow',
+    'Fachbegriff',
+    'Munir',
+    'DSGVO'
+  ]);
   assert.equal(config.language, 'de-DE');
   assert.equal(config.useGitignore, false);
   assert.deepEqual(config.ignorePaths, []);
@@ -31,6 +45,22 @@ test('rejects invalid configuration values', () => {
   assert.throws(
     () => GrammarConfig.parse('words: [word, 42]'),
     /"words" value/
+  );
+  assert.throws(
+    () => GrammarConfig.parse('english: [word, 42]'),
+    /"english" value/
+  );
+  assert.throws(
+    () => GrammarConfig.parse('technicalTerms: [word, 42]'),
+    /"technicalTerms" value/
+  );
+  assert.throws(
+    () => GrammarConfig.parse('names: [word, 42]'),
+    /"names" value/
+  );
+  assert.throws(
+    () => GrammarConfig.parse('abbreviations: [word, 42]'),
+    /"abbreviations" value/
   );
   assert.throws(
     () => GrammarConfig.parse('ignore:\n  html: "yes"'),
@@ -75,6 +105,10 @@ test('uses defaults when .grammar.yaml does not exist', async () => {
     assert.equal(config.useGitignore, false);
     assert.deepEqual(config.ignorePaths, []);
     assert.deepEqual(config.words, []);
+    assert.deepEqual(config.english, []);
+    assert.deepEqual(config.names, []);
+    assert.deepEqual(config.abbreviations, []);
+    assert.deepEqual(config.technicalTerms, []);
     assert.deepEqual(config.ignoreOptions, {
       html: true,
       style: true,
@@ -101,6 +135,48 @@ test('sends configured words to LanguageTool as ignoredWords', async () => {
     }
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end('{"matches":[]}');
+  });
+
+  test('sends configured technical terms, names, and abbreviations to LanguageTool', async () => {
+    const config = GrammarConfig.parse(
+      'words: [ProductName]\nenglish: [workflow]\ntechnicalTerms: [Fachbegriff]\nnames: [Munir]\nabbreviations: [DSGVO]'
+    );
+    let requestBody = '';
+    const server = createServer(async (request, response) => {
+      for await (const chunk of request) {
+        requestBody += chunk.toString();
+      }
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end('{"matches":[]}');
+    });
+
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+
+    try {
+      const address = server.address();
+      assert.ok(address && typeof address !== 'string');
+      const service = new LanguageCheckerService(
+        config.language,
+        `http://127.0.0.1:${address.port}/check`,
+        config.ignoredWords
+      );
+
+      await service.checkText(
+        'Munir uses DSGVO, ProductName, workflow and Fachbegriff.'
+      );
+      assert.deepEqual(new URLSearchParams(requestBody).getAll('ignoredWords'), [
+        'ProductName',
+        'workflow',
+        'Fachbegriff',
+        'Munir',
+        'DSGVO'
+      ]);
+    } finally {
+      const closed = once(server, 'close');
+      server.close();
+      await closed;
+    }
   });
 
   server.listen(0, '127.0.0.1');
@@ -171,6 +247,158 @@ test('filters LanguageTool matches whose text exactly matches a configured word'
 
     const matches = await service.checkText('authors other');
     assert.deepEqual(matches.map((match) => match.rule.id), ['OTHER']);
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('enforces uppercase word starts after colons and suppresses matching remote flags', async () => {
+  const requests = ['**Wer:** eine Fachkraft.', '**Wer:** Eine Fachkraft.'];
+  let requestIndex = 0;
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) {
+      body += chunk.toString();
+    }
+    const text = new URLSearchParams(body).get('text') ?? '';
+    const index = requestIndex;
+    requestIndex += 1;
+    const afterColonOffset = text.indexOf(index === 0 ? 'eine' : 'Eine');
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        matches: [
+          {
+            message: 'Capitalization error after colon',
+            offset: afterColonOffset,
+            length: 1,
+            replacements: [],
+            rule: { id: 'DE_CASE', description: 'Capitalization' }
+          },
+          {
+            message: 'Independent spelling error',
+            offset: text.indexOf('Fachkraft'),
+            length: 1,
+            replacements: [],
+            rule: { id: 'SPELLING', description: 'Spelling' }
+          }
+        ]
+      })
+    );
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const service = new LanguageCheckerService(
+      'de-DE',
+      `http://127.0.0.1:${address.port}/check`
+    );
+
+    const lowercaseMatches = await service.checkText(requests[0], true);
+    assert.equal(lowercaseMatches.length, 2);
+    assert.equal(
+      lowercaseMatches.find((match) => match.rule.id === 'COLON_CAPITALIZATION')
+        ?.replacements[0].value,
+      'E'
+    );
+
+    const uppercaseMatches = await service.checkText(requests[1], true);
+    assert.deepEqual(uppercaseMatches.map((match) => match.rule.id), ['SPELLING']);
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('does not treat gender-inclusive colon forms as sentence punctuation', async () => {
+  const text = 'Klient:innen und Mitarbeiter:innen werden begleitet.';
+  const genderMarkerOffset = text.indexOf('innen');
+  const server = createServer(async (request, response) => {
+    request.resume();
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        matches: [
+          {
+            message: 'Capitalization error after colon',
+            offset: genderMarkerOffset,
+            length: 1,
+            replacements: [],
+            rule: { id: 'DE_CASE', description: 'Capitalization' }
+          }
+        ]
+      })
+    );
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const service = new LanguageCheckerService(
+      'de-DE',
+      `http://127.0.0.1:${address.port}/check`
+    );
+
+    assert.deepEqual(await service.checkText(text, true), []);
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('does not flag uppercase sentence starts in Markdown list items', async () => {
+  const texts = ['- **Nach Anbruch:** Es gibt keine pauschale Frist.', 'Nach Anbruch.'];
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) {
+      body += chunk.toString();
+    }
+    const text = new URLSearchParams(body).get('text') ?? '';
+    const offset = text.indexOf('Nach');
+
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        matches: [
+          {
+            message: 'Außer am Satzanfang werden nur Nomen großgeschrieben.',
+            offset,
+            length: 'Nach'.length,
+            replacements: [{ value: 'nach' }],
+            rule: { id: 'DE_CASE', description: 'Capitalization' }
+          }
+        ]
+      })
+    );
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const service = new LanguageCheckerService(
+      'de-DE',
+      `http://127.0.0.1:${address.port}/check`
+    );
+
+    assert.deepEqual(await service.checkText(texts[0], true), []);
+    assert.deepEqual(
+      (await service.checkText(texts[1], true)).map(({ rule }) => rule.id),
+      ['DE_CASE']
+    );
   } finally {
     const closed = once(server, 'close');
     server.close();
@@ -295,7 +523,9 @@ test('masks HTML, style blocks, frontmatter, and Markdown link targets before ch
       '---\ntitle: Falschwort\n---\n' +
       '<small style="color: red;">Sichtbarer Text</small>\n' +
       '<style>.class { color: red; }</style>\n' +
-      '[Linktext](https://example.invalid/falschwort)';
+      '[Linktext](https://example.invalid/falschwort)\n' +
+      '[[studies/hep/incident/1|Selbstdarstellung]]\n' +
+      '[[studies/hep/incident/2]]';
 
     assert.deepEqual(await service.checkText(markdown, true), []);
     const submitted = submittedTexts[0];
@@ -308,6 +538,9 @@ test('masks HTML, style blocks, frontmatter, and Markdown link targets before ch
     assert.equal(submitted.includes('Sichtbarer Text'), true);
     assert.equal(submitted.includes('Linktext'), true);
     assert.equal(submitted.includes('example.invalid'), false);
+    assert.equal(submitted.includes('studies/hep/incident/1'), false);
+    assert.equal(submitted.includes('Selbstdarstellung'), true);
+    assert.equal(submitted.includes('studies/hep/incident/2'), false);
   } finally {
     const closed = once(server, 'close');
     server.close();
@@ -364,6 +597,53 @@ test('does not turn masked Markdown content into repeated-space diagnostics', as
       '  '
     );
     assert.deepEqual(matches.map((match) => match.offset), [visibleWhitespaceOffset]);
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('reports repeated spaces after Markdown links locally', async () => {
+  const markdown =
+    'Empty link: []()  description\n' +
+    '[Link](https://example.invalid/path_(one))   more text\n' +
+    '[Hard break](url)  \n';
+  const server = createServer(async (request, response) => {
+    request.resume();
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end('{"matches":[]}');
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const service = new LanguageCheckerService(
+      'de-DE',
+      `http://127.0.0.1:${address.port}/check`
+    );
+
+    const matches = await service.checkText(markdown, true);
+    const expectedOffsets = [
+      markdown.indexOf('  description'),
+      markdown.indexOf('   more text')
+    ];
+
+    assert.deepEqual(
+      matches.map(({ offset, length, rule }) => ({ offset, length, rule: rule.id })),
+      expectedOffsets.map((offset, index) => ({
+        offset,
+        length: index === 0 ? 2 : 3,
+        rule: 'WHITESPACE_RULE'
+      }))
+    );
+    assert.deepEqual(
+      matches.map(({ replacements }) => replacements),
+      [[{ value: ' ' }], [{ value: ' ' }]]
+    );
   } finally {
     const closed = once(server, 'close');
     server.close();
