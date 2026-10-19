@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and help
+    url: https://github.com/munirmardinli/grammar/discussions
+    about: Ask general questions or get help in Discussions.
+  - name: Report a security vulnerability
+    url: https://github.com/munirmardinli/grammar/security/advisories/new
+    about: Report security vulnerabilities privately instead of opening a public issue.

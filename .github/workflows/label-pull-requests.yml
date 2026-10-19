@@ -1,0 +1,108 @@
+name: Label pull requests
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply labels based on changed files
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pullNumber = context.payload.pull_request.number;
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              { owner, repo, pull_number: pullNumber, per_page: 100 },
+              (response) => response.data.map((file) => file.filename)
+            );
+
+            const rules = [
+              {
+                name: "area: extension",
+                color: "1D76DB",
+                description: "Changes to extension source or grammar configuration",
+                matches: (file) => file.startsWith("src/") || file === ".grammar.yaml"
+              },
+              {
+                name: "area: tests",
+                color: "BFD4F2",
+                description: "Changes to tests or test configuration",
+                matches: (file) => file.startsWith("test/") || file === "tsconfig.test.json"
+              },
+              {
+                name: "area: documentation",
+                color: "0075CA",
+                description: "Changes to user or project documentation",
+                matches: (file) => file === "README.md" || file.endsWith(".md")
+              },
+              {
+                name: "area: dependencies",
+                color: "FBCA04",
+                description: "Changes to npm dependencies",
+                matches: (file) => file === "package.json" || file === "package-lock.json"
+              },
+              {
+                name: "area: automation",
+                color: "D4C5F9",
+                description: "Changes to GitHub automation and repository configuration",
+                matches: (file) => file.startsWith(".github/")
+              }
+            ];
+
+            const desired = rules.filter((rule) => files.some(rule.matches));
+
+            for (const rule of desired) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: rule.name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name: rule.name,
+                  color: rule.color,
+                  description: rule.description
+                });
+              }
+            }
+
+            const currentLabels = context.payload.pull_request.labels.map((label) => label.name);
+            const managedLabels = rules.map((rule) => rule.name);
+            const stale = currentLabels.filter(
+              (name) => managedLabels.includes(name) && !desired.some((rule) => rule.name === name)
+            );
+
+            if (stale.length > 0) {
+              await github.rest.issues.removeLabel({
+                owner,
+                repo,
+                issue_number: pullNumber,
+                name: stale[0]
+              });
+              for (const name of stale.slice(1)) {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: pullNumber,
+                  name
+                });
+              }
+            }
+
+            if (desired.length > 0) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: pullNumber,
+                labels: desired.map((rule) => rule.name)
+              });
+            }

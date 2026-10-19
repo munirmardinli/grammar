@@ -1,0 +1,69 @@
+name: Bug report
+description: Report a reproducible bug in the VS Code extension.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include confidential content, credentials, or complete document text. The extension sends checked text to the public LanguageTool API.
+  - type: input
+    id: extension-version
+    attributes:
+      label: Extension version
+      description: You can find the version under Extensions in VS Code.
+      placeholder: "1.0.2"
+    validations:
+      required: true
+  - type: input
+    id: vscode-version
+    attributes:
+      label: VS Code version
+      placeholder: "e.g. 1.100.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: What happened? Remove any private or confidential content.
+      placeholder: Describe the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: List the steps needed to reproduce the bug.
+      placeholder: |
+        1. Open ...
+        2. Change ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant error messages
+      description: Optional. Remove credentials and personal information.
+      render: text
+    validations:
+      required: false

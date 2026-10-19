@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest an improvement to the extension.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the use case without including confidential document text or personal data.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would you like to solve?
+      description: Describe the specific use case.
+      placeholder: I find it difficult to ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would you like the extension to behave?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What alternatives or workarounds have you considered?
+    validations:
+      required: false

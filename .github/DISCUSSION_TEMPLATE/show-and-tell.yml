@@ -1,0 +1,22 @@
+title: Share a use case or configuration
+labels:
+  - show-and-tell
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not share confidential document content or credentials. Check `.grammar.yaml` examples for private words and paths before posting.
+  - type: textarea
+    id: use
+    attributes:
+      label: How do you use the extension?
+      description: Describe your use case or share a helpful configuration.
+    validations:
+      required: true
+  - type: textarea
+    id: feedback
+    attributes:
+      label: Tips and feedback
+      description: What works well, and what could be improved?
+    validations:
+      required: false

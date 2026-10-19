@@ -1,0 +1,22 @@
+title: Question about the extension
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include confidential text or credentials. The extension sends checked text to the public LanguageTool API.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What do you need help with?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Include relevant VS Code and extension versions, or an anonymized excerpt from your `.grammar.yaml`.
+    validations:
+      required: false
