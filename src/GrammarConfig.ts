@@ -5,18 +5,33 @@ import ignore from "ignore";
 import { minimatch } from "minimatch";
 import { parse } from "yaml";
 
+import type { GrammarIgnoreOptions } from "./type";
+
 class GrammarConfig {
   private static readonly defaultLanguage = "de-DE";
+  private static readonly defaultIgnoreOptions: GrammarIgnoreOptions = {
+    html: true,
+    style: true,
+    frontmatter: true,
+    markdownLinks: true,
+  };
 
   private constructor(
     public readonly language: string,
     public readonly useGitignore: boolean,
     public readonly ignorePaths: string[],
     public readonly words: string[],
+    public readonly ignoreOptions: GrammarIgnoreOptions,
   ) {}
 
   public static defaults(): GrammarConfig {
-    return new GrammarConfig(GrammarConfig.defaultLanguage, false, [], []);
+    return new GrammarConfig(
+      GrammarConfig.defaultLanguage,
+      false,
+      [],
+      [],
+      { ...GrammarConfig.defaultIgnoreOptions },
+    );
   }
 
   public static parse(content: string): GrammarConfig {
@@ -61,6 +76,36 @@ class GrammarConfig {
         'The "words" value in .grammar.yaml must be an array of strings.',
       );
     }
+    if (
+      config.ignore !== undefined &&
+      (typeof config.ignore !== "object" ||
+        config.ignore === null ||
+        Array.isArray(config.ignore))
+    ) {
+      throw new TypeError(
+        'The "ignore" value in .grammar.yaml must be an object.',
+      );
+    }
+
+    const ignoreOptions = {
+      ...GrammarConfig.defaultIgnoreOptions,
+    };
+    if (config.ignore !== undefined) {
+      const ignoreConfig = config.ignore as Record<string, unknown>;
+      for (const key of Object.keys(ignoreOptions) as Array<
+        keyof GrammarIgnoreOptions
+      >) {
+        const value = ignoreConfig[key];
+        if (value !== undefined && typeof value !== "boolean") {
+          throw new TypeError(
+            `The "ignore.${key}" value in .grammar.yaml must be a boolean.`,
+          );
+        }
+        if (typeof value === "boolean") {
+          ignoreOptions[key] = value;
+        }
+      }
+    }
 
     return new GrammarConfig(
       typeof config.language === "string"
@@ -69,6 +114,7 @@ class GrammarConfig {
       typeof config.useGitignore === "boolean" ? config.useGitignore : false,
       GrammarConfig.isStringArray(config.ignorePaths) ? config.ignorePaths : [],
       GrammarConfig.isStringArray(config.words) ? config.words : [],
+      ignoreOptions,
     );
   }
 

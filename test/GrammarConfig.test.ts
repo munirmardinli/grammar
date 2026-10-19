@@ -15,6 +15,12 @@ test('parses the grammar YAML configuration and supplies defaults', () => {
   assert.equal(config.language, 'de-DE');
   assert.equal(config.useGitignore, false);
   assert.deepEqual(config.ignorePaths, []);
+  assert.deepEqual(config.ignoreOptions, {
+    html: true,
+    style: true,
+    frontmatter: true,
+    markdownLinks: true
+  });
 });
 
 test('rejects invalid configuration values', () => {
@@ -26,6 +32,22 @@ test('rejects invalid configuration values', () => {
     () => GrammarConfig.parse('words: [word, 42]'),
     /"words" value/
   );
+  assert.throws(
+    () => GrammarConfig.parse('ignore:\n  html: "yes"'),
+    /"ignore\.html" value/
+  );
+});
+
+test('parses ignore flags from the grammar YAML configuration', () => {
+  const config = GrammarConfig.parse(
+    'ignore:\n  html: false\n  frontmatter: false'
+  );
+  assert.deepEqual(config.ignoreOptions, {
+    html: false,
+    style: true,
+    frontmatter: false,
+    markdownLinks: true
+  });
 });
 
 test('loads .grammar.yaml from the workspace folder', async () => {
@@ -38,6 +60,7 @@ test('loads .grammar.yaml from the workspace folder', async () => {
     assert.equal(config.useGitignore, false);
     assert.deepEqual(config.ignorePaths, []);
     assert.deepEqual(config.words, ['custom']);
+    assert.equal(config.ignoreOptions.frontmatter, true);
   } finally {
     await rm(workspacePath, { recursive: true, force: true });
   }
@@ -52,6 +75,12 @@ test('uses defaults when .grammar.yaml does not exist', async () => {
     assert.equal(config.useGitignore, false);
     assert.deepEqual(config.ignorePaths, []);
     assert.deepEqual(config.words, []);
+    assert.deepEqual(config.ignoreOptions, {
+      html: true,
+      style: true,
+      frontmatter: true,
+      markdownLinks: true
+    });
   } finally {
     await rm(workspacePath, { recursive: true, force: true });
   }
@@ -149,6 +178,55 @@ test('filters LanguageTool matches whose text exactly matches a configured word'
   }
 });
 
+test('ignores whitespace-only LanguageTool matches in Markdown table layout', async () => {
+  const tableText =
+    '| Raum-Code | Raum-Typ        |\r\n| --------- | --------------- |\r\n| **B009**  | Bewegungsraum   |';
+  const tableWhitespaceOffset = tableText.indexOf('  | Bewegungsraum');
+  const proseText = 'normal  spacing';
+  const proseWhitespaceOffset = proseText.indexOf('  ');
+
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) {
+      body += chunk.toString();
+    }
+    const submittedText = new URLSearchParams(body).get('text');
+    const inTable = submittedText?.startsWith('|') ?? false;
+
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        matches: [
+          {
+            message: 'Repeated spaces',
+            offset: inTable ? tableWhitespaceOffset : proseWhitespaceOffset,
+            length: 2,
+            replacements: [],
+            rule: { id: 'WHITESPACE_RULE', description: 'Repeated whitespace' }
+          }
+        ]
+      })
+    );
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const service = new LanguageCheckerService('en-US', `http://127.0.0.1:${address.port}/check`);
+
+    assert.deepEqual(await service.checkText(tableText, true), []);
+    assert.equal((await service.checkText(proseText, true)).length, 1);
+    assert.equal((await service.checkText(tableText, false)).length, 1);
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
 test('uses configuration updates for the next LanguageTool request', async () => {
   const requests: URLSearchParams[] = [];
   const server = createServer(async (request, response) => {
@@ -173,12 +251,63 @@ test('uses configuration updates for the next LanguageTool request', async () =>
     );
 
     await service.checkText('A test sentence.');
-    service.updateConfiguration('en-US', ['ProductName']);
+    service.updateConfiguration('en-US', ['ProductName'], {
+      html: true,
+      style: true,
+      frontmatter: false,
+      markdownLinks: true
+    });
     await service.checkText('Another test sentence.');
 
     assert.equal(requests[0].get('language'), 'de-DE');
     assert.equal(requests[1].get('language'), 'en-US');
     assert.deepEqual(requests[1].getAll('ignoredWords'), ['ProductName']);
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('masks HTML, style blocks, frontmatter, and Markdown link targets before checking', async () => {
+  const submittedTexts: string[] = [];
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) {
+      body += chunk.toString();
+    }
+    submittedTexts.push(new URLSearchParams(body).get('text') ?? '');
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end('{"matches":[]}');
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const service = new LanguageCheckerService(
+      'de-DE',
+      `http://127.0.0.1:${address.port}/check`
+    );
+    const markdown =
+      '---\ntitle: Falschwort\n---\n' +
+      '<small style="color: red;">Sichtbarer Text</small>\n' +
+      '<style>.class { color: red; }</style>\n' +
+      '[Linktext](https://example.invalid/falschwort)';
+
+    assert.deepEqual(await service.checkText(markdown, true), []);
+    const submitted = submittedTexts[0];
+    assert.equal(submitted.length, markdown.length);
+    assert.equal(submitted.split('\n').length, markdown.split('\n').length);
+    assert.equal(submitted.includes('Falschwort'), false);
+    assert.equal(submitted.includes('<small'), false);
+    assert.equal(submitted.includes('style='), false);
+    assert.equal(submitted.includes('.class'), false);
+    assert.equal(submitted.includes('Sichtbarer Text'), true);
+    assert.equal(submitted.includes('Linktext'), true);
+    assert.equal(submitted.includes('example.invalid'), false);
   } finally {
     const closed = once(server, 'close');
     server.close();

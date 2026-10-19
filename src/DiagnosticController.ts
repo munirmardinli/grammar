@@ -83,7 +83,7 @@ class DiagnosticController {
     }
 
     const text = document.getText();
-    const matches = await this.checkerService.checkText(text);
+    const matches = await this.checkerService.checkText(text, document.languageId === 'markdown');
     if (this.validationVersions.get(uriString) !== validationVersion) {
       return;
     }

@@ -18,4 +18,11 @@ export interface Response {
   matches: Match[];
 }
 
+export interface GrammarIgnoreOptions {
+  html: boolean;
+  style: boolean;
+  frontmatter: boolean;
+  markdownLinks: boolean;
+}
+
 export type DebounceTimer = ReturnType<typeof setTimeout>;

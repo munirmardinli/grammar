@@ -2,14 +2,10 @@ language: de-DE
 useGitignore: true
 ignorePaths:
   - "src/**/*.sh"
-  - "src/**/*.yml"
-  - "src/**/*.yaml"
-  - "src/**/*.json"
-  - "src/**/*.md"
-  - ".vscode/**/*.json"
-  - ".prettierrc.yaml"
-  - ".config/**/*.{yml,json,.zshrc,zsh}"
-  - ".cspell.yaml"
 words:
-  - LanguageTool
   - VSCode
+ignore:
+  html: true
+  style: true
+  frontmatter: true
+  markdownLinks: true

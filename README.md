@@ -27,12 +27,21 @@ ignorePaths:
 words:
   - ProductName
   - custom term
+ignore:
+  html: true
+  style: true
+  frontmatter: true
+  markdownLinks: true
 ```
 
 `language` selects the LanguageTool language, `useGitignore` enables rules from
 the workspace-root `.gitignore`, `ignorePaths` skips matching workspace files,
-and `words` are sent to LanguageTool as words to ignore. All fields are
-optional; defaults are `de-DE`, `false`, and empty lists.
+and `words` are sent to LanguageTool as words to ignore. The `ignore` flags
+control whether HTML tags and attributes, CSS `<style>` blocks, Markdown
+frontmatter, and Markdown link destinations are excluded from checking. The
+visible text inside HTML elements and Markdown link labels remains checked.
+All fields are optional; defaults are `de-DE`, `false`, and empty lists. All
+four `ignore` flags default to `true`.
 Changes to `.grammar.yaml` and `.gitignore` are watched and applied to open
 documents without reloading VS Code.
 

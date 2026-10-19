@@ -28,7 +28,12 @@ class Extension {
       }
     }
 
-    this.languageCheckerService = new LanguageCheckerService(this.config.language, undefined, this.config.words);
+    this.languageCheckerService = new LanguageCheckerService(
+      this.config.language,
+      undefined,
+      this.config.words,
+      this.config.ignoreOptions,
+    );
     this.diagnosticController = new DiagnosticController(
       this.languageCheckerService,
       500,
@@ -114,7 +119,11 @@ class Extension {
   private async reloadConfiguration(): Promise<void> {
     try {
       await this.loadConfiguration();
-      this.languageCheckerService?.updateConfiguration(this.config.language, this.config.words);
+      this.languageCheckerService?.updateConfiguration(
+        this.config.language,
+        this.config.words,
+        this.config.ignoreOptions,
+      );
       await this.diagnosticController?.revalidateOpenDocuments();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
