@@ -11,6 +11,11 @@ class DiagnosticController {
   private readonly replacementsByDiagnostic: WeakMap<vscode.Diagnostic, Replacement[]>;
   private readonly isIgnoredDocument: (document: vscode.TextDocument) => boolean;
   private readonly validationVersions: Map<string, number>;
+  private readonly diagnosticsByDocument: Map<
+    string,
+    { document: vscode.TextDocument; diagnostics: vscode.Diagnostic[] }
+  >;
+  private readonly outputChannel: vscode.OutputChannel;
 
   constructor(
     checkerService: LanguageCheckerService,
@@ -24,6 +29,8 @@ class DiagnosticController {
     this.replacementsByDiagnostic = new WeakMap<vscode.Diagnostic, Replacement[]>();
     this.isIgnoredDocument = isIgnoredDocument;
     this.validationVersions = new Map<string, number>();
+    this.diagnosticsByDocument = new Map();
+    this.outputChannel = vscode.window.createOutputChannel('Sprachfehler');
   }
 
   public registerEvents(context: vscode.ExtensionContext): void {
@@ -71,6 +78,8 @@ class DiagnosticController {
 
     if (this.isIgnoredDocument(document)) {
       this.diagnosticCollection.delete(document.uri);
+      this.diagnosticsByDocument.delete(uriString);
+      this.updateOutputChannel();
       return;
     }
 
@@ -107,6 +116,8 @@ class DiagnosticController {
     }
 
     this.diagnosticCollection.set(document.uri, diagnostics);
+    this.diagnosticsByDocument.set(uriString, { document, diagnostics });
+    this.updateOutputChannel();
   }
 
   public async revalidateOpenDocuments(): Promise<void> {
@@ -125,11 +136,46 @@ class DiagnosticController {
       this.debounceTimers.delete(uriString);
     }
     this.diagnosticCollection.delete(document.uri);
+    this.diagnosticsByDocument.delete(uriString);
+    this.updateOutputChannel();
+  }
+
+  private updateOutputChannel(): void {
+    this.outputChannel.clear();
+    const errors = [...this.diagnosticsByDocument.values()].flatMap(
+      ({ document, diagnostics }) =>
+        diagnostics.map((diagnostic) => ({ document, diagnostic }))
+    );
+
+    this.outputChannel.appendLine(
+      `${errors.length} Sprachfehler in ${this.diagnosticsByDocument.size} geprüften Dokument(en):`
+    );
+
+    if (errors.length === 0) {
+      this.outputChannel.appendLine('Keine Sprachfehler gefunden.');
+      return;
+    }
+
+    for (const { document, diagnostic } of errors) {
+      const { line, character } = diagnostic.range.start;
+      const filePath = document.uri.fsPath || document.uri.toString();
+      const ruleCode =
+        typeof diagnostic.code === 'string' || typeof diagnostic.code === 'number'
+          ? diagnostic.code
+          : 'LanguageTool';
+      const matchedText = document.getText(diagnostic.range).replace(/\s+/g, ' ').trim();
+      const excerpt = matchedText ? ` "${matchedText}"` : '';
+      this.outputChannel.appendLine(
+        `${filePath}:${line + 1}:${character + 1} [${ruleCode}]${excerpt}: ${diagnostic.message}`
+      );
+    }
   }
 
   public dispose(): void {
     this.diagnosticCollection.clear();
     this.diagnosticCollection.dispose();
+    this.outputChannel.dispose();
+    this.diagnosticsByDocument.clear();
     for (const timer of this.debounceTimers.values()) {
       clearTimeout(timer);
     }

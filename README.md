@@ -3,6 +3,10 @@
 This VS Code extension checks spelling and grammar in German text using the
 LanguageTool public API. It adds diagnostics to plaintext, Markdown, and
 Git-commit documents, and provides quick fixes for suggested replacements.
+All errors in checked, open documents are also listed in the VS Code Output
+panel under the `Sprachfehler` channel, with file, line, column, rule, and
+matched text. The list refreshes as documents are checked; select `Sprachfehler`
+in the Output panel to view it.
 
 ## Requirements
 
@@ -40,6 +44,8 @@ ignore:
   style: true
   frontmatter: true
   markdownLinks: true
+rules:
+  WHITESPACE_RULE: false
 ```
 
 `language` selects the LanguageTool language, `useGitignore` enables rules from
@@ -58,7 +64,11 @@ also expected to start with a capital letter, but gender markers such as the
 colon in `Klient:innen` are not treated as sentence punctuation. Capitalized
 sentence starts in Markdown list items are accepted. All fields are optional;
 defaults are `de-DE`, `false`, and empty lists. All four `ignore` flags default
-to `true`.
+to `true`. The optional `rules` map enables or disables LanguageTool rules by
+their rule ID; rules are enabled by default, and setting an entry to `false`
+disables it. For example, `WHITESPACE_RULE: false` disables repeated-whitespace
+warnings. Two trailing spaces before a Markdown line break are ignored as valid
+Markdown syntax.
 Changes to `.grammar.yaml` and `.gitignore` are watched and applied to open
 documents without reloading VS Code.
 

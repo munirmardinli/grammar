@@ -4,7 +4,7 @@
   "displayName": "Spell & Grammar Checker",
   "description": "VS Code extension for spelling and grammar checking powered by LanguageTool",
   "icon": "images/icon.png",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "license": "MIT",
   "author": {
     "name": "Munir Mardinli",

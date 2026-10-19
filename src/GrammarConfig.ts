@@ -5,7 +5,7 @@ import ignore from "ignore";
 import { minimatch } from "minimatch";
 import { parse } from "yaml";
 
-import type { GrammarIgnoreOptions } from "./type";
+import type { GrammarIgnoreOptions, GrammarRuleOptions } from "./type";
 
 class GrammarConfig {
   private static readonly defaultLanguage = "de-DE";
@@ -26,6 +26,7 @@ class GrammarConfig {
     public readonly names: string[],
     public readonly abbreviations: string[],
     public readonly ignoreOptions: GrammarIgnoreOptions,
+    public readonly rules: GrammarRuleOptions,
   ) {}
 
   public get ignoredWords(): string[] {
@@ -49,6 +50,7 @@ class GrammarConfig {
       [],
       [],
       { ...GrammarConfig.defaultIgnoreOptions },
+      {},
     );
   }
 
@@ -136,6 +138,16 @@ class GrammarConfig {
         'The "ignore" value in .grammar.yaml must be an object.',
       );
     }
+    if (
+      config.rules !== undefined &&
+      (typeof config.rules !== "object" ||
+        config.rules === null ||
+        Array.isArray(config.rules))
+    ) {
+      throw new TypeError(
+        'The "rules" value in .grammar.yaml must be an object.',
+      );
+    }
 
     const ignoreOptions = {
       ...GrammarConfig.defaultIgnoreOptions,
@@ -157,6 +169,20 @@ class GrammarConfig {
       }
     }
 
+    const rules: GrammarRuleOptions = {};
+    if (config.rules !== undefined) {
+      for (const [ruleId, value] of Object.entries(
+        config.rules as Record<string, unknown>,
+      )) {
+        if (typeof value !== "boolean") {
+          throw new TypeError(
+            `The "rules.${ruleId}" value in .grammar.yaml must be a boolean.`,
+          );
+        }
+        rules[ruleId] = value;
+      }
+    }
+
     return new GrammarConfig(
       typeof config.language === "string"
         ? config.language
@@ -173,6 +199,7 @@ class GrammarConfig {
         ? config.abbreviations
         : [],
       ignoreOptions,
+      rules,
     );
   }
 

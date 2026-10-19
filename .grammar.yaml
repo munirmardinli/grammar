@@ -15,3 +15,5 @@ ignore:
   style: true
   frontmatter: true
   markdownLinks: true
+rules:
+  WHITESPACE_RULE: false

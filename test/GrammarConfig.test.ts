@@ -35,6 +35,7 @@ test('parses the grammar YAML configuration and supplies defaults', () => {
     frontmatter: true,
     markdownLinks: true
   });
+  assert.deepEqual(config.rules, {});
 });
 
 test('rejects invalid configuration values', () => {
@@ -66,6 +67,77 @@ test('rejects invalid configuration values', () => {
     () => GrammarConfig.parse('ignore:\n  html: "yes"'),
     /"ignore\.html" value/
   );
+  assert.throws(
+    () => GrammarConfig.parse('rules: WHITESPACE_RULE'),
+    /"rules" value/
+  );
+  assert.throws(
+    () => GrammarConfig.parse('rules:\n  WHITESPACE_RULE: "false"'),
+    /"rules\.WHITESPACE_RULE" value/
+  );
+});
+
+test('parses LanguageTool rule overrides', () => {
+  const config = GrammarConfig.parse(
+    'rules:\n  WHITESPACE_RULE: false\n  SOME_RULE: true'
+  );
+  assert.deepEqual(config.rules, {
+    WHITESPACE_RULE: false,
+    SOME_RULE: true
+  });
+});
+
+test('filters LanguageTool rules disabled in configuration', async () => {
+  const text = 'Repeated  spacing';
+  const server = createServer(async (request, response) => {
+    request.resume();
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        matches: [
+          {
+            message: 'Repeated spaces',
+            offset: text.indexOf('  '),
+            length: 2,
+            replacements: [],
+            rule: { id: 'WHITESPACE_RULE', description: 'Repeated whitespace' }
+          },
+          {
+            message: 'Other issue',
+            offset: 0,
+            length: 1,
+            replacements: [],
+            rule: { id: 'OTHER_RULE', description: 'Other' }
+          }
+        ]
+      })
+    );
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const config = GrammarConfig.parse('rules:\n  WHITESPACE_RULE: false');
+    const service = new LanguageCheckerService(
+      config.language,
+      `http://127.0.0.1:${address.port}/check`,
+      config.ignoredWords,
+      config.ignoreOptions,
+      config.rules
+    );
+
+    assert.deepEqual(
+      (await service.checkText(text)).map(({ rule }) => rule.id),
+      ['OTHER_RULE']
+    );
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
 });
 
 test('parses ignore flags from the grammar YAML configuration', () => {
@@ -115,6 +187,7 @@ test('uses defaults when .grammar.yaml does not exist', async () => {
       frontmatter: true,
       markdownLinks: true
     });
+    assert.deepEqual(config.rules, {});
   } finally {
     await rm(workspacePath, { recursive: true, force: true });
   }
@@ -597,6 +670,55 @@ test('does not turn masked Markdown content into repeated-space diagnostics', as
       '  '
     );
     assert.deepEqual(matches.map((match) => match.offset), [visibleWhitespaceOffset]);
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('ignores two trailing spaces used for a Markdown hard break', async () => {
+  const markdown = '[Inklusion Lexikon](https://example.invalid)  \n';
+  const prose = 'visible  spacing';
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) {
+      body += chunk.toString();
+    }
+    const text = new URLSearchParams(body).get('text') ?? '';
+    const offset = text.includes('visible')
+      ? prose.indexOf('  ')
+      : markdown.indexOf('  \n');
+
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        matches: [
+          {
+            message: 'Repeated spaces',
+            offset,
+            length: 2,
+            replacements: [],
+            rule: { id: 'WHITESPACE_RULE', description: 'Repeated whitespace' }
+          }
+        ]
+      })
+    );
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const service = new LanguageCheckerService(
+      'de-DE',
+      `http://127.0.0.1:${address.port}/check`
+    );
+
+    assert.deepEqual(await service.checkText(markdown, true), []);
+    assert.equal((await service.checkText(prose, true)).length, 1);
   } finally {
     const closed = once(server, 'close');
     server.close();

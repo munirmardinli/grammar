@@ -33,6 +33,7 @@ class Extension {
       undefined,
       this.config.ignoredWords,
       this.config.ignoreOptions,
+      this.config.rules,
     );
     this.diagnosticController = new DiagnosticController(
       this.languageCheckerService,
@@ -123,6 +124,7 @@ class Extension {
         this.config.language,
         this.config.ignoredWords,
         this.config.ignoreOptions,
+        this.config.rules,
       );
       await this.diagnosticController?.revalidateOpenDocuments();
     } catch (error) {

@@ -25,4 +25,6 @@ export interface GrammarIgnoreOptions {
   markdownLinks: boolean;
 }
 
+export type GrammarRuleOptions = Record<string, boolean>;
+
 export type DebounceTimer = ReturnType<typeof setTimeout>;

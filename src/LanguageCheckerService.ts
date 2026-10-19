@@ -1,12 +1,18 @@
 import axios from "axios";
 
-import type { GrammarIgnoreOptions, Match, Response } from "./type";
+import type {
+  GrammarIgnoreOptions,
+  GrammarRuleOptions,
+  Match,
+  Response,
+} from "./type";
 
 class LanguageCheckerService {
   private readonly apiUrl: string;
   private language: string;
   private ignoredWords: readonly string[];
   private ignoreOptions: GrammarIgnoreOptions;
+  private rules: GrammarRuleOptions;
 
   constructor(
     language: string,
@@ -18,21 +24,25 @@ class LanguageCheckerService {
       frontmatter: true,
       markdownLinks: true,
     },
+    rules: GrammarRuleOptions = {},
   ) {
     this.language = language;
     this.apiUrl = apiUrl;
     this.ignoredWords = ignoredWords;
     this.ignoreOptions = ignoreOptions;
+    this.rules = rules;
   }
 
   public updateConfiguration(
     language: string,
     ignoredWords: readonly string[],
     ignoreOptions: GrammarIgnoreOptions,
+    rules: GrammarRuleOptions = {},
   ): void {
     this.language = language;
     this.ignoredWords = ignoredWords;
     this.ignoreOptions = ignoreOptions;
+    this.rules = rules;
   }
 
   public async checkText(
@@ -118,9 +128,13 @@ class LanguageCheckerService {
             },
           ];
         },
-      );
+      ).filter(({ rule }) => this.rules[rule.id] !== false);
 
       const remoteMatches = (response.data.matches ?? []).filter((match) => {
+        if (this.rules[match.rule.id] === false) {
+          return false;
+        }
+
         if (
           maskedRanges.some(
             ({ start, end }) =>
@@ -139,6 +153,16 @@ class LanguageCheckerService {
                 checkedText.slice(match.offset, match.offset + match.length),
               ),
           )
+        ) {
+          return false;
+        }
+
+        if (
+          isMarkdown &&
+          /^\s+$/.test(
+            text.slice(match.offset, match.offset + match.length),
+          ) &&
+          LanguageCheckerService.isMarkdownHardBreak(text, match.offset, match.length)
         ) {
           return false;
         }
@@ -183,9 +207,13 @@ class LanguageCheckerService {
         );
       });
 
-      return [...remoteMatches, ...localMatches, ...linkWhitespaceMatches].sort(
-        (left, right) => left.offset - right.offset,
-      );
+      return [
+        ...remoteMatches,
+        ...localMatches,
+        ...linkWhitespaceMatches,
+      ]
+        .filter(({ rule }) => this.rules[rule.id] !== false)
+        .sort((left, right) => left.offset - right.offset);
     } catch (error) {
       console.error("LanguageCheckerService Error:", error);
       return [];
@@ -350,6 +378,28 @@ class LanguageCheckerService {
           }
           return targetLine <= tableEnd;
         })()
+    );
+  }
+
+  private static isMarkdownHardBreak(
+    text: string,
+    offset: number,
+    length: number,
+  ): boolean {
+    const lineStart = text.lastIndexOf("\n", offset - 1) + 1;
+    const lineEndIndex = text.indexOf("\n", offset);
+    const lineEnd = lineEndIndex === -1 ? text.length : lineEndIndex;
+    const line = text.slice(lineStart, lineEnd).replace(/\r$/, "");
+    const trailingSpaces = / {2,}$/.exec(line);
+
+    if (!trailingSpaces) {
+        return false;
+    }
+
+    const hardBreakStart = lineStart + trailingSpaces.index;
+    return (
+        offset < lineStart + line.length &&
+        offset + length > hardBreakStart
     );
   }
 
