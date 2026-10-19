@@ -4,8 +4,8 @@ import type { Match, Response } from "./type";
 
 class LanguageCheckerService {
   private readonly apiUrl: string;
-  private readonly language: string;
-  private readonly ignoredWords: readonly string[];
+  private language: string;
+  private ignoredWords: readonly string[];
 
   constructor(
     language: string,
@@ -14,6 +14,11 @@ class LanguageCheckerService {
   ) {
     this.language = language;
     this.apiUrl = apiUrl;
+    this.ignoredWords = ignoredWords;
+  }
+
+  public updateConfiguration(language: string, ignoredWords: readonly string[]): void {
+    this.language = language;
     this.ignoredWords = ignoredWords;
   }
 
@@ -37,7 +42,17 @@ class LanguageCheckerService {
         timeout: 5000,
       });
 
-      return response.data.matches ?? [];
+      const ignoredWords = new Set(
+        this.ignoredWords.map((word) => word.trim().toLowerCase()),
+      );
+
+      return (response.data.matches ?? []).filter((match) => {
+        const matchedText = text
+          .slice(match.offset, match.offset + match.length)
+          .trim()
+          .toLowerCase();
+        return !ignoredWords.has(matchedText);
+      });
     } catch (error) {
       console.error("LanguageCheckerService Error:", error);
       return [];

@@ -33,6 +33,8 @@ words:
 the workspace-root `.gitignore`, `ignorePaths` skips matching workspace files,
 and `words` are sent to LanguageTool as words to ignore. All fields are
 optional; defaults are `de-DE`, `false`, and empty lists.
+Changes to `.grammar.yaml` and `.gitignore` are watched and applied to open
+documents without reloading VS Code.
 
 ## Development
 

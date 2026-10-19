@@ -8,18 +8,17 @@ import { QuickFixProvider } from "./QuickFixProvider";
 
 class Extension {
   private diagnosticController: DiagnosticController | undefined;
+  private languageCheckerService: LanguageCheckerService | undefined;
+  private workspacePath: string | undefined;
+  private config = GrammarConfig.defaults();
+  private gitignore = ignore();
 
   public async activate(context: vscode.ExtensionContext): Promise<void> {
-    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    let config: GrammarConfig;
-    let gitignore = ignore();
+    this.workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
-    if (workspacePath) {
+    if (this.workspacePath) {
       try {
-        config = await GrammarConfig.load(workspacePath);
-        if (config.useGitignore) {
-          gitignore = await GrammarConfig.loadGitignore(workspacePath);
-        }
+        await this.loadConfiguration();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         void vscode.window.showErrorMessage(
@@ -27,22 +26,16 @@ class Extension {
         );
         throw error;
       }
-    } else {
-      config = GrammarConfig.defaults();
     }
 
-    const languageCheckerService = new LanguageCheckerService(
-      config.language,
-      undefined,
-      config.words,
-    );
+    this.languageCheckerService = new LanguageCheckerService(this.config.language, undefined, this.config.words);
     this.diagnosticController = new DiagnosticController(
-      languageCheckerService,
+      this.languageCheckerService,
       500,
       (document) =>
-        workspacePath !== undefined &&
+        this.workspacePath !== undefined &&
         document.uri.scheme === "file" &&
-        config.isPathIgnored(document.uri.fsPath, workspacePath, gitignore),
+        this.config.isPathIgnored(document.uri.fsPath, this.workspacePath, this.gitignore),
     );
 
     const quickFixProvider = new QuickFixProvider(
@@ -64,11 +57,69 @@ class Extension {
     context.subscriptions.push({
       dispose: () => this.deactivate(),
     });
+
+    if (this.workspacePath) {
+      this.watchConfiguration(context);
+    }
   }
 
   public deactivate(): void {
     this.diagnosticController?.dispose();
     this.diagnosticController = undefined;
+    this.languageCheckerService = undefined;
+    this.workspacePath = undefined;
+  }
+
+  private async loadConfiguration(): Promise<void> {
+    if (!this.workspacePath) {
+      this.config = GrammarConfig.defaults();
+      this.gitignore = ignore();
+      return;
+    }
+
+    const config = await GrammarConfig.load(this.workspacePath);
+    const gitignore = config.useGitignore
+      ? await GrammarConfig.loadGitignore(this.workspacePath)
+      : ignore();
+
+    this.config = config;
+    this.gitignore = gitignore;
+  }
+
+  private watchConfiguration(context: vscode.ExtensionContext): void {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      return;
+    }
+
+    const configWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(workspaceFolder, ".grammar.yaml"),
+    );
+    const gitignoreWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(workspaceFolder, ".gitignore"),
+    );
+    const reload = () => {
+      void this.reloadConfiguration();
+    };
+
+    configWatcher.onDidCreate(reload);
+    configWatcher.onDidChange(reload);
+    configWatcher.onDidDelete(reload);
+    gitignoreWatcher.onDidCreate(reload);
+    gitignoreWatcher.onDidChange(reload);
+    gitignoreWatcher.onDidDelete(reload);
+    context.subscriptions.push(configWatcher, gitignoreWatcher);
+  }
+
+  private async reloadConfiguration(): Promise<void> {
+    try {
+      await this.loadConfiguration();
+      this.languageCheckerService?.updateConfiguration(this.config.language, this.config.words);
+      await this.diagnosticController?.revalidateOpenDocuments();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      void vscode.window.showErrorMessage(`Could not reload .grammar.yaml: ${message}`);
+    }
   }
 }
 

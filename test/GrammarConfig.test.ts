@@ -101,6 +101,91 @@ test('sends configured words to LanguageTool as ignoredWords', async () => {
   }
 });
 
+test('filters LanguageTool matches whose text exactly matches a configured word', async () => {
+  const server = createServer(async (request, response) => {
+    request.resume();
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        matches: [
+          {
+            message: 'Ignored spelling match',
+            offset: 0,
+            length: 7,
+            replacements: [],
+            rule: { id: 'SPELLING', description: 'Spelling' }
+          },
+          {
+            message: 'Other spelling match',
+            offset: 8,
+            length: 5,
+            replacements: [],
+            rule: { id: 'OTHER', description: 'Other' }
+          }
+        ]
+      })
+    );
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+
+    const service = new LanguageCheckerService(
+      'en-US',
+      `http://127.0.0.1:${address.port}/check`,
+      [' AUTHORS ']
+    );
+
+    const matches = await service.checkText('authors other');
+    assert.deepEqual(matches.map((match) => match.rule.id), ['OTHER']);
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('uses configuration updates for the next LanguageTool request', async () => {
+  const requests: URLSearchParams[] = [];
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) {
+      body += chunk.toString();
+    }
+    requests.push(new URLSearchParams(body));
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end('{"matches":[]}');
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const service = new LanguageCheckerService(
+      'de-DE',
+      `http://127.0.0.1:${address.port}/check`
+    );
+
+    await service.checkText('A test sentence.');
+    service.updateConfiguration('en-US', ['ProductName']);
+    await service.checkText('Another test sentence.');
+
+    assert.equal(requests[0].get('language'), 'de-DE');
+    assert.equal(requests[1].get('language'), 'en-US');
+    assert.deepEqual(requests[1].getAll('ignoredWords'), ['ProductName']);
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
 test('matches configured paths and enabled gitignore patterns', async () => {
   const workspacePath = await mkdtemp(join(tmpdir(), 'grammar-test-'));
 

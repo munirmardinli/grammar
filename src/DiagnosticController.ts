@@ -10,6 +10,7 @@ class DiagnosticController {
   private readonly debounceDelay: number;
   private readonly replacementsByDiagnostic: WeakMap<vscode.Diagnostic, Replacement[]>;
   private readonly isIgnoredDocument: (document: vscode.TextDocument) => boolean;
+  private readonly validationVersions: Map<string, number>;
 
   constructor(
     checkerService: LanguageCheckerService,
@@ -22,6 +23,7 @@ class DiagnosticController {
     this.debounceDelay = debounceDelay;
     this.replacementsByDiagnostic = new WeakMap<vscode.Diagnostic, Replacement[]>();
     this.isIgnoredDocument = isIgnoredDocument;
+    this.validationVersions = new Map<string, number>();
   }
 
   public registerEvents(context: vscode.ExtensionContext): void {
@@ -63,6 +65,10 @@ class DiagnosticController {
   }
 
   public async validateDocument(document: vscode.TextDocument): Promise<void> {
+    const uriString = document.uri.toString();
+    const validationVersion = (this.validationVersions.get(uriString) ?? 0) + 1;
+    this.validationVersions.set(uriString, validationVersion);
+
     if (this.isIgnoredDocument(document)) {
       this.diagnosticCollection.delete(document.uri);
       return;
@@ -78,6 +84,10 @@ class DiagnosticController {
 
     const text = document.getText();
     const matches = await this.checkerService.checkText(text);
+    if (this.validationVersions.get(uriString) !== validationVersion) {
+      return;
+    }
+
     const diagnostics: vscode.Diagnostic[] = [];
 
     for (const match of matches) {
@@ -99,12 +109,17 @@ class DiagnosticController {
     this.diagnosticCollection.set(document.uri, diagnostics);
   }
 
+  public async revalidateOpenDocuments(): Promise<void> {
+    await Promise.all(vscode.workspace.textDocuments.map((document) => this.validateDocument(document)));
+  }
+
   public getDiagnosticReplacements(diagnostic: vscode.Diagnostic): Replacement[] {
     return this.replacementsByDiagnostic.get(diagnostic) ?? [];
   }
 
   private clearDiagnostics(document: vscode.TextDocument): void {
     const uriString = document.uri.toString();
+    this.validationVersions.set(uriString, (this.validationVersions.get(uriString) ?? 0) + 1);
     if (this.debounceTimers.has(uriString)) {
       clearTimeout(this.debounceTimers.get(uriString)!);
       this.debounceTimers.delete(uriString);
@@ -119,6 +134,7 @@ class DiagnosticController {
       clearTimeout(timer);
     }
     this.debounceTimers.clear();
+    this.validationVersions.clear();
   }
 }
 
