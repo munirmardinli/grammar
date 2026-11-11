@@ -2,6 +2,7 @@ language: de-DE
 useGitignore: true
 ignorePaths:
   - "src/**/*.sh"
+  - CHANGELOG.md
 words:
   - VSCode
 english: []
@@ -10,10 +11,15 @@ names:
   - Hammurapi
 abbreviations:
   - PDF
+markdownlint:
+  - MD047
+prettier:
+  - printWidth: 120
 ignore:
   html: true
   style: true
   frontmatter: true
   markdownLinks: true
+  codeBlocks: true
 rules:
   WHITESPACE_RULE: false

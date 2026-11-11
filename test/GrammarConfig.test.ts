@@ -18,6 +18,8 @@ test('parses the grammar YAML configuration and supplies defaults', () => {
   assert.deepEqual(config.technicalTerms, ['Fachbegriff']);
   assert.deepEqual(config.names, ['Munir']);
   assert.deepEqual(config.abbreviations, ['DSGVO']);
+  assert.deepEqual(config.markdownlint, []);
+  assert.deepEqual(config.prettier, []);
   assert.deepEqual(config.ignoredWords, [
     'LanguageTool',
     'VSCode',
@@ -33,9 +35,15 @@ test('parses the grammar YAML configuration and supplies defaults', () => {
     html: true,
     style: true,
     frontmatter: true,
-    markdownLinks: true
+    markdownLinks: true,
+    codeBlocks: true
   });
   assert.deepEqual(config.rules, {});
+});
+
+test('parses markdownlint array from configuration', () => {
+  const config = GrammarConfig.parse('markdownlint: [MD001, MD002]');
+  assert.deepEqual(config.markdownlint, ['MD001', 'MD002']);
 });
 
 test('rejects invalid configuration values', () => {
@@ -64,6 +72,14 @@ test('rejects invalid configuration values', () => {
     /"abbreviations" value/
   );
   assert.throws(
+    () => GrammarConfig.parse('markdownlint: [word, 42]'),
+    /"markdownlint" value/
+  );
+  assert.throws(
+    () => GrammarConfig.parse('prettier: word'),
+    /"prettier" value/
+  );
+  assert.throws(
     () => GrammarConfig.parse('ignore:\n  html: "yes"'),
     /"ignore\.html" value/
   );
@@ -75,6 +91,11 @@ test('rejects invalid configuration values', () => {
     () => GrammarConfig.parse('rules:\n  WHITESPACE_RULE: "false"'),
     /"rules\.WHITESPACE_RULE" value/
   );
+});
+
+test('parses prettier array/objects from configuration', () => {
+  const config = GrammarConfig.parse('prettier:\n  - printWidth: 120');
+  assert.ok(Array.isArray(config.prettier));
 });
 
 test('parses LanguageTool rule overrides', () => {
@@ -148,7 +169,8 @@ test('parses ignore flags from the grammar YAML configuration', () => {
     html: false,
     style: true,
     frontmatter: false,
-    markdownLinks: true
+    markdownLinks: true,
+    codeBlocks: true
   });
 });
 
@@ -180,12 +202,15 @@ test('uses defaults when .grammar.yaml does not exist', async () => {
     assert.deepEqual(config.english, []);
     assert.deepEqual(config.names, []);
     assert.deepEqual(config.abbreviations, []);
+    assert.deepEqual(config.markdownlint, []);
+    assert.deepEqual(config.prettier, []);
     assert.deepEqual(config.technicalTerms, []);
     assert.deepEqual(config.ignoreOptions, {
       html: true,
       style: true,
       frontmatter: true,
-      markdownLinks: true
+      markdownLinks: true,
+      codeBlocks: true
     });
     assert.deepEqual(config.rules, {});
   } finally {
@@ -479,6 +504,103 @@ test('does not flag uppercase sentence starts in Markdown list items', async () 
   }
 });
 
+test('masks fenced and inline code blocks before checking', async () => {
+  const submittedTexts: string[] = [];
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) {
+      body += chunk.toString();
+    }
+    submittedTexts.push(new URLSearchParams(body).get('text') ?? '');
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end('{"matches":[]}');
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const service = new LanguageCheckerService(
+      'de-DE',
+      `http://127.0.0.1:${address.port}/check`
+    );
+    const markdown =
+      'Hier ist ein Code-Beispiel:\n\n' +
+      '```java\n' +
+      'public class Foo {\n' +
+      '  public static void main(String[] args) {\n' +
+      '    System.out.println("Hello World");\n' +
+      '  }\n' +
+      '}\n' +
+      '```\n' +
+      'Und `print("falschwort")` im Text.';
+
+    assert.deepEqual(await service.checkText(markdown, true), []);
+    const submitted = submittedTexts[0];
+    assert.equal(submitted.length, markdown.length);
+    assert.equal(submitted.includes('public'), false);
+    assert.equal(submitted.includes('String'), false);
+    assert.equal(submitted.includes('System.out.println'), false);
+    assert.equal(submitted.includes('falschwort'), false);
+    assert.equal(submitted.includes('Hier ist'), true);
+    assert.equal(submitted.includes('im Text'), true);
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('does not flag masked code block content as repeated-space diagnostics', async () => {
+  const markdown = '```java\n  code  with  spaces\n```\nvisible  spacing';
+  const codeWhitespaceOffset = markdown.indexOf('  code');
+  const visibleWhitespaceOffset = markdown.lastIndexOf('  ');
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) {
+      body += chunk.toString();
+    }
+    const submittedText = new URLSearchParams(body).get('text') ?? '';
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        matches: [codeWhitespaceOffset, visibleWhitespaceOffset].map(
+          (offset) => ({
+            message: 'Repeated spaces',
+            offset,
+            length: 2,
+            replacements: [],
+            rule: { id: 'WHITESPACE_RULE', description: 'Repeated whitespace' },
+          })
+        ),
+      })
+    );
+  });
+
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    const service = new LanguageCheckerService(
+      'de-DE',
+      `http://127.0.0.1:${address.port}/check`
+    );
+
+    const matches = await service.checkText(markdown, true);
+    assert.deepEqual(matches.map((match) => match.offset), [
+      visibleWhitespaceOffset,
+    ]);
+  } finally {
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
 test('ignores whitespace-only LanguageTool matches in Markdown table layout', async () => {
   const tableText =
     '| Raum-Code | Raum-Typ        |\r\n| --------- | --------------- |\r\n| **B009**  | Bewegungsraum   |';
@@ -556,7 +678,8 @@ test('uses configuration updates for the next LanguageTool request', async () =>
       html: true,
       style: true,
       frontmatter: false,
-      markdownLinks: true
+      markdownLinks: true,
+      codeBlocks: true
     });
     await service.checkText('Another test sentence.');
 

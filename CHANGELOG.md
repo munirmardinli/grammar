@@ -10,7 +10,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - Added configurable ignore lists for English terms, technical terms, names, and abbreviations.
 - Added capitalization checks after colons, with support for gender-inclusive forms and sentence starts in Markdown list items.
-- Added Markdown-aware filtering for HTML, style blocks, frontmatter, and link targets.
+- Added Markdown-aware filtering for HTML, style blocks, frontmatter, link targets, and fenced/inline code blocks.
 
 ### Changed
 

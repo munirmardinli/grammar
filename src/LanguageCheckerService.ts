@@ -23,6 +23,7 @@ class LanguageCheckerService {
       style: true,
       frontmatter: true,
       markdownLinks: true,
+      codeBlocks: true,
     },
     rules: GrammarRuleOptions = {},
   ) {
@@ -273,11 +274,16 @@ class LanguageCheckerService {
     }
 
     if (options.markdownLinks && isMarkdown) {
-      markdownLinkEnds = LanguageCheckerService.maskMarkdownLinkTargets(
+      markdownLinkEnds = this.maskMarkdownLinkTargets(
         text,
         maskRange,
       );
-      LanguageCheckerService.maskObsidianLinkTargets(text, maskRange);
+      this.maskObsidianLinkTargets(text, maskRange);
+    }
+
+    if (options.codeBlocks && isMarkdown) {
+      this.maskCodeBlocks(text, maskRange);
+      this.maskInlineCode(text, maskRange);
     }
 
     return { text: characters.join(""), maskedRanges, markdownLinkEnds };
@@ -354,6 +360,34 @@ class LanguageCheckerService {
     }
   }
 
+  private static maskCodeBlocks(
+    text: string,
+    maskRange: (start: number, end: number) => void,
+  ): void {
+    const codeBlockPattern = /(?:^|\n)([ \t]*`{3,}[^\n]*\n[\s\S]*?\n[ \t]*`{3,}[ \t]*(?:\n|$))/g;
+    for (const match of text.matchAll(codeBlockPattern)) {
+      const start = match.index;
+      if (start === undefined) {
+        continue;
+      }
+      maskRange(start, start + match[1].length);
+    }
+  }
+
+  private static maskInlineCode(
+    text: string,
+    maskRange: (start: number, end: number) => void,
+  ): void {
+    const inlineCodePattern = /`([^`\n]+)`/g;
+    for (const match of text.matchAll(inlineCodePattern)) {
+      const start = match.index;
+      if (start === undefined) {
+        continue;
+      }
+      maskRange(start, start + match[0].length);
+    }
+  }
+
   private static isMarkdownTableLayout(text: string, offset: number): boolean {
     const lines = text.split(/\r?\n/);
     const targetLine = text.slice(0, offset).split(/\r?\n/).length - 1;
@@ -393,13 +427,13 @@ class LanguageCheckerService {
     const trailingSpaces = / {2,}$/.exec(line);
 
     if (!trailingSpaces) {
-        return false;
+      return false;
     }
 
     const hardBreakStart = lineStart + trailingSpaces.index;
     return (
-        offset < lineStart + line.length &&
-        offset + length > hardBreakStart
+      offset < lineStart + line.length &&
+      offset + length > hardBreakStart
     );
   }
 

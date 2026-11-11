@@ -23,6 +23,7 @@ export interface GrammarIgnoreOptions {
   style: boolean;
   frontmatter: boolean;
   markdownLinks: boolean;
+  codeBlocks: boolean;
 }
 
 export type GrammarRuleOptions = Record<string, boolean>;

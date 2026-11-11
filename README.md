@@ -30,7 +30,6 @@ ignorePaths:
   - ".vscode/**/*.json"
 words:
   - ProductName
-  - custom term
 english:
   - workflow
 technicalTerms:
@@ -39,27 +38,33 @@ names:
   - Munir Mardinli
 abbreviations:
   - DSGVO
+markdownlint:
+  - MD047
+prettier: 
+  - printWidth: 120
 ignore:
   html: true
   style: true
   frontmatter: true
   markdownLinks: true
+  codeBlocks: true
 rules:
   WHITESPACE_RULE: false
 ```
 
 `language` selects the LanguageTool language, `useGitignore` enables rules from
 the workspace-root `.gitignore`, `ignorePaths` skips matching workspace files,
-and `words`, `english`, `technicalTerms`, `names`, and `abbreviations` are sent
-to LanguageTool as terms to ignore. Use `english` for English words in German
+and `words`, `english`, `technicalTerms`, `names`, `abbreviations`, and `markdownlint`
+are sent to LanguageTool as terms to ignore. Use `english` for English words in German
 text, `technicalTerms` for domain-specific vocabulary, `names` for people or
 other proper names, and `abbreviations` for abbreviations. Gender-inclusive
 forms such as `Klient:innen` are accepted by
 the local capitalization check. The `ignore` flags control whether HTML tags
-and attributes, CSS `<style>` blocks, Markdown frontmatter, and Markdown link
-targets are excluded from checking. This includes standard Markdown links
-(`[label](target)`) and Obsidian wiki links (`[[target]]` or
-`[[target|label]]`); link labels remain checked. The first word after a colon is
+and attributes, CSS `<style>` blocks, Markdown frontmatter, Markdown link
+targets, and fenced/inline code blocks are excluded from checking. This
+includes standard Markdown links (`[label](target)`) and Obsidian wiki links
+(`[[target]]` or `[[target|label]]`); link labels remain checked. The first
+word after a colon is
 also expected to start with a capital letter, but gender markers such as the
 colon in `Klient:innen` are not treated as sentence punctuation. Capitalized
 sentence starts in Markdown list items are accepted. All fields are optional;

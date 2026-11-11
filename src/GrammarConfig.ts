@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
-
 import ignore from "ignore";
 import { minimatch } from "minimatch";
 import { parse } from "yaml";
@@ -14,6 +13,7 @@ class GrammarConfig {
     style: true,
     frontmatter: true,
     markdownLinks: true,
+    codeBlocks: true,
   };
 
   private constructor(
@@ -25,9 +25,11 @@ class GrammarConfig {
     public readonly technicalTerms: string[],
     public readonly names: string[],
     public readonly abbreviations: string[],
+    public readonly markdownlint: string[],
+    public readonly prettier: unknown[],
     public readonly ignoreOptions: GrammarIgnoreOptions,
     public readonly rules: GrammarRuleOptions,
-  ) {}
+  ) { }
 
   public get ignoredWords(): string[] {
     return [
@@ -40,8 +42,8 @@ class GrammarConfig {
   }
 
   public static defaults(): GrammarConfig {
-    return new GrammarConfig(
-      GrammarConfig.defaultLanguage,
+    return new this(
+      this.defaultLanguage,
       false,
       [],
       [],
@@ -49,7 +51,9 @@ class GrammarConfig {
       [],
       [],
       [],
-      { ...GrammarConfig.defaultIgnoreOptions },
+      [],
+      [],
+      { ...this.defaultIgnoreOptions },
       {},
     );
   }
@@ -82,7 +86,7 @@ class GrammarConfig {
     }
     if (
       config.ignorePaths !== undefined &&
-      !GrammarConfig.isStringArray(config.ignorePaths)
+      !this.isStringArray(config.ignorePaths)
     ) {
       throw new TypeError(
         'The "ignorePaths" value in .grammar.yaml must be an array of strings.',
@@ -90,7 +94,7 @@ class GrammarConfig {
     }
     if (
       config.words !== undefined &&
-      !GrammarConfig.isStringArray(config.words)
+      !this.isStringArray(config.words)
     ) {
       throw new TypeError(
         'The "words" value in .grammar.yaml must be an array of strings.',
@@ -98,7 +102,7 @@ class GrammarConfig {
     }
     if (
       config.english !== undefined &&
-      !GrammarConfig.isStringArray(config.english)
+      !this.isStringArray(config.english)
     ) {
       throw new TypeError(
         'The "english" value in .grammar.yaml must be an array of strings.',
@@ -106,7 +110,7 @@ class GrammarConfig {
     }
     if (
       config.technicalTerms !== undefined &&
-      !GrammarConfig.isStringArray(config.technicalTerms)
+      !this.isStringArray(config.technicalTerms)
     ) {
       throw new TypeError(
         'The "technicalTerms" value in .grammar.yaml must be an array of strings.',
@@ -114,7 +118,7 @@ class GrammarConfig {
     }
     if (
       config.names !== undefined &&
-      !GrammarConfig.isStringArray(config.names)
+      !this.isStringArray(config.names)
     ) {
       throw new TypeError(
         'The "names" value in .grammar.yaml must be an array of strings.',
@@ -122,10 +126,26 @@ class GrammarConfig {
     }
     if (
       config.abbreviations !== undefined &&
-      !GrammarConfig.isStringArray(config.abbreviations)
+      !this.isStringArray(config.abbreviations)
     ) {
       throw new TypeError(
         'The "abbreviations" value in .grammar.yaml must be an array of strings.',
+      );
+    }
+    if (
+      config.markdownlint !== undefined &&
+      !this.isStringArray(config.markdownlint)
+    ) {
+      throw new TypeError(
+        'The "markdownlint" value in .grammar.yaml must be an array of strings.',
+      );
+    }
+    if (
+      config.prettier !== undefined &&
+      !Array.isArray(config.prettier)
+    ) {
+      throw new TypeError(
+        'The "prettier" value in .grammar.yaml must be an array.',
       );
     }
     if (
@@ -150,7 +170,7 @@ class GrammarConfig {
     }
 
     const ignoreOptions = {
-      ...GrammarConfig.defaultIgnoreOptions,
+      ...this.defaultIgnoreOptions,
     };
     if (config.ignore !== undefined) {
       const ignoreConfig = config.ignore as Record<string, unknown>;
@@ -186,18 +206,20 @@ class GrammarConfig {
     return new GrammarConfig(
       typeof config.language === "string"
         ? config.language
-        : GrammarConfig.defaultLanguage,
+        : this.defaultLanguage,
       typeof config.useGitignore === "boolean" ? config.useGitignore : false,
-      GrammarConfig.isStringArray(config.ignorePaths) ? config.ignorePaths : [],
-      GrammarConfig.isStringArray(config.words) ? config.words : [],
-      GrammarConfig.isStringArray(config.english) ? config.english : [],
-      GrammarConfig.isStringArray(config.technicalTerms)
+      this.isStringArray(config.ignorePaths) ? config.ignorePaths : [],
+      this.isStringArray(config.words) ? config.words : [],
+      this.isStringArray(config.english) ? config.english : [],
+      this.isStringArray(config.technicalTerms)
         ? config.technicalTerms
         : [],
-      GrammarConfig.isStringArray(config.names) ? config.names : [],
-      GrammarConfig.isStringArray(config.abbreviations)
+      this.isStringArray(config.names) ? config.names : [],
+      this.isStringArray(config.abbreviations)
         ? config.abbreviations
         : [],
+      this.isStringArray(config.markdownlint) ? config.markdownlint : [],
+      (config.prettier as unknown[]) ?? [],
       ignoreOptions,
       rules,
     );
@@ -209,14 +231,14 @@ class GrammarConfig {
     try {
       content = await readFile(join(workspacePath, ".grammar.yaml"), "utf8");
     } catch (error) {
-      if (GrammarConfig.isFileMissing(error)) {
-        return GrammarConfig.defaults();
+      if (this.isFileMissing(error)) {
+        return this.defaults();
       }
 
       throw error;
     }
 
-    return GrammarConfig.parse(content);
+    return this.parse(content);
   }
 
   public static async loadGitignore(
@@ -226,7 +248,7 @@ class GrammarConfig {
       const content = await readFile(join(workspacePath, ".gitignore"), "utf8");
       return ignore().add(content);
     } catch (error) {
-      if (GrammarConfig.isFileMissing(error)) {
+      if (this.isFileMissing(error)) {
         return ignore();
       }
 
